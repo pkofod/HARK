@@ -3367,6 +3367,42 @@ class Curvilinear2DInterp(HARKinterpolator2D):
         dfdy = y_alpha*dfda + y_beta*dfdb
         return dfdy
 
+
+def discreteEnvelope(Vs, sigma):
+    '''
+    Returns the final optimal value and policies given the choice specific value
+    functions Vs. Policies are degenerate if sigma == 0.0.
+    Parameters
+    ----------
+    Vs : [numpy.array]
+        A numpy.array that holds choice specific values at common grid points.
+    sigma : float
+        A number that controls the variance of the taste shocks
+    Returns
+    -------
+    V : [numpy.array]
+        A numpy.array that holds the integrated value function.
+    P : [numpy.array]
+        A numpy.array that holds the discrete choice probabilities
+    '''
+
+    # Assumes that NaNs have been replaced by -numpy.inf or similar
+    if sigma == 0.0:
+        # We could construct a linear index here and use unravel_index.
+        Pflat = np.argmax(Vs, axis=0)
+        P = np.zeros(Vs.shape)
+        for i in range(Vs.shape[0]):
+            P[i][Pflat==i] = 1
+        V = np.amax(Vs, axis=0)
+        return V, P
+    maxV = Vs.max()
+    P = np.divide(np.exp((Vs-Vs[0])/sigma), np.sum(np.exp((Vs-Vs[0])/sigma), axis=0))
+
+    sumexp = np.sum(np.exp((Vs-maxV)/sigma), axis=0)
+    V = np.log(sumexp)
+    V = maxV + sigma*V
+    return V, P
+
 def main():
     print("Sorry, HARK.interpolation doesn't actually do much on its own.")
     print("To see some examples of its interpolation methods in action, look at any")
