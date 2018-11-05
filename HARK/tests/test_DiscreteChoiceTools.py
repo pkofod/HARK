@@ -26,7 +26,7 @@ class testsForDiscreteChoiceTools(unittest.TestCase):
 
         Vref = np.array([[1, 2], [9, 3]])
         Pref = np.array([[[0, 0], [1, 0]], [[1, 1], [0, 1]]])
-        P, V = discreteEnvelope(Vs, sigma)
+        V, P = discreteEnvelope(Vs, sigma)
 
         self.assertEqual((Vref == V).all(), True)
         self.assertEqual((Pref == P).all(), True)
