@@ -27,7 +27,7 @@ class IlliquidSaverSolution(Solution):
         self.P = P
 
 
-class RetiringDeaton(AgentType):
+class IlliquidSaver(AgentType):
     def __init__(self, DiscFac=0.98, Rliq=1.02, Rilliq=1.04,
                  CRRA=1.0, sigma=0.0,
                  TranIncVar = 0.005,
@@ -110,12 +110,11 @@ class RetiringDeaton(AgentType):
         -------
         none
         """
-        choice = 1
-        C = self.CohGrid # consume everything
-        Coh = self.CohGrid # everywhere
-        # this transformation is different than in our G2EGM, we
-        # need to figure out which is better
 
+        c1DFunc = LinearInterp(self.LiqGrid, self.LiqGrid)
+        cFunc = lambda liq, illiq: c1DFunc(liq + illiq)
+
+        cFunc = lambda m, n: c1DFunc(m + n)
         CFunc = lambda coh: LinearInterp(Coh, C, lower_extrap=True)(coh)
         V_T = -1.0/self.Util(self.CohGrid, choice)
         VFunc = lambda coh: LinearInterp(Coh, V_T, lower_extrap=True)(coh)
