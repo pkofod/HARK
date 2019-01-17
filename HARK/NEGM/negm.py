@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from HARK import Solution, AgentType
 from HARK.interpolation import LinearInterp
-from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv
+from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv, makeGridExpMult
 from HARK.simulation import drawMeanOneLognormal
 from math import sqrt
 # might as well alias them utility, as we need CRRA
@@ -32,46 +32,33 @@ class RetiringDeaton(AgentType):
                  CRRA=1.0, sigma=0.0,
                  TranIncVar = 0.005,
                  TranIncNodes = 0,
-                 CohNodes=2000,
-                 PdCohLims=(1e-6, 700), PdCohNodes=1800,
+                 LiqNodes=2000,
+                 PdLiqLims=(1e-6, 700), PdLiqNodes=1800,
                  saveCommon=False,
                  **kwds):
 
         AgentType.__init__(self, **kwds)
-        self.T = T
-        self.simN = 100
-        self.simT = 20
         self.saveCommon = saveCommon
-        # check conditions for analytic solution
-        # if not CRRA == 1.0:
-        #     # err
-        #     return None
-        #     # Todo the DisUtil is wrong below, look up in paper
-        # if DiscFac*Rfree >= 1.0 or -DisUtil > (1+DiscFac)*numpy.log(1+DiscFac):
-        #     # err
-        #     return None
 
         self.TranIncVar = TranIncVar
         self.TranIncNodes = TranIncNodes
 
-        self.time_inv = ['PdCohGrid', 'CohGrid', 'EGMVector', 'par', 'Util', 'UtilP',
-                         'UtilP_inv', 'saveCommon', 'TranInc', 'TranIncWeights']
+        self.time_inv = ['PdLiqGrid', 'LiqGrid','PdIlliqGrid', 'IlliqGrid', 'EGMVector',
+                         'par', 'Util', 'UtilP', 'UtilP_inv', 'saveCommon', 'TranInc', 'TranIncWeights']
         self.time_vary = ['age']
 
-        self.age = list(range(T-1))
+        self.par = IlliquidSaverParameters(DiscFac, CRRA, Rliq, Rilliq, sigma)
+        self.PdLiqLims = PdLiqLims
+        self.PdLiqNodes = PdLiqNodes
+        self.LiqNodes = LiqNodes
 
-        self.par = IlliquidSaverParameters(DiscFac, CRRA, DisUtil, Rliq, Rilliq YRet, YWork, sigma)
-        self.PdCohLims = PdCohLims
-        self.PdCohNodes = PdCohNodes
-        self.CohNodes = CohNodes
-        # d == 2 is working
         # - 10.0 moves curve down to improve lienar interpolation
         self.Util = lambda c, d: utility(c, CRRA) - self.par.DisUtil*(2-d) - 10.0
         self.UtilP = lambda c, d: utilityP(c, CRRA) # we require CRRA 1.0 for now...
         self.UtilP_inv = lambda u, d: utilityP_inv(u, CRRA) # ... so ...
 
         self.preSolve = self.updateLast
-        self.solveOnePeriod = solveRetiringDeaton
+        self.solveOnePeriod = solveIlliquidSaver
 
     def updateLast(self):
         """
@@ -86,9 +73,14 @@ class RetiringDeaton(AgentType):
         -------
         None
         """
-        self.PdCohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1], self.PdCohNodes)
-        self.CohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1]*1.5, self.PdCohNodes)
-        self.EGMVector = numpy.zeros(self.CohNodes)
+
+        self.PdLiqGrid = makeGridExpMult(self.PdLiqLims[0],  self.PdLiqLims[1], self.PdLiqNodes, timestonest=1)
+        self.LiqGrid = makeGridExpMult(self.PdLiqLims[0], self.PdLiqLims[1]*1.5, self.PdLiqNodes, timestonest=1)
+
+        self.PdIlliqGrid = makeGridExpMult(self.PdLiqLims[0],  self.PdLiqLims[1], self.PdLiqNodes, timestonest=1)
+        self.IlliqGrid = makeGridExpMult(self.PdLiqLims[0], self.PdLiqLims[1]*1.5, self.PdLiqNodes, timestonest=1)
+
+        self.EGMVector = numpy.zeros(self.LiqNodes)
 
         if self.TranIncNodes == 0:
             self.TranInc = numpy.ones(1)
@@ -97,36 +89,34 @@ class RetiringDeaton(AgentType):
             self.TranInc, self.TranIncWeights = numpy.polynomial.hermite.hermgauss(self.TranIncNodes)
             self.TranInc = numpy.exp(-self.TranIncVar/2.0 + sqrt(2)*sqrt(self.TranIncVar)*self.TranInc)
             self.TranIncWeights = self.TranIncWeights/sqrt(numpy.pi)
-            # self.TranInc = numpy.exp(-self.TranIncVar/2.0 + sqrt(2)*sqrt(self.TranIncVar)*self.TranInc)
-        # else: # monte carlo
-        #     self.TranInc = drawMeanOneLognormal(N=self.TranIncNodes, sigma=self.TranIncVar)
-        #     self.TranIncWeights = numpy.ones(self.TranIncNodes)/self.TranIncNodes
 
-        rs = self.solveLastRetired()
-        ws = self.solveLastWorking()
+        # solve last illiquid saver
+        C = 1
+        B = 1
+        Vs = 1
+        P = 1
+        self.solution_terminal = IlliquidSaverSolution(C, B, Vs, P)
 
-        commonM = ws.Coh
+    def solveLastIlliquidSaver(self):
+        """
+        Solves the last period of an agent that saves in both a liquid and an
+        illiquid asset.
 
-        if self.saveCommon:
-            # To save the pre-disrete choice expected consumption and value function,
-            # we need to interpolate onto the same grid between the two. We know that
-            # ws.C and ws.V_T are on the ws.Coh grid, so we use that to interpolate.
-            Crs = LinearInterp(rs.Coh, rs.C, lower_extrap=True)(commonM)
-            Cws = ws.C
-    #        Cws = LinearInterp(rs.Coh, rs.C)(CohGrid)
+        Parameters
+        ----------
+        none
 
-            V_Trs = LinearInterp(rs.Coh, rs.V_T, lower_extrap=True)(commonM)
-            V_Tws = ws.V_T
+        Returns
+        -------
+        none
+        """
+        choice = 1
+        C = self.CohGrid # consume everything
+        Coh = self.CohGrid # everywhere
+        # this transformation is different than in our G2EGM, we
+        # need to figure out which is better
 
-            # use vstack to stack the choice specific value functions by
-            # value of cash-on-hand
-            V_T, P = discreteEnvelope(numpy.stack((V_Trs, V_Tws)), self.par.sigma)
-
-            # find the expected consumption prior to discrete choice by element-
-            # wise multiplication between choice distribution and choice specific
-            # consumption functions
-            C = (P*numpy.stack((Crs, Cws))).sum(axis=0)
-        else:
-            C, V_T, P = None, None, None
-
-        self.solution_terminal = RetiringDeatonSolution(rs, ws, commonM, C, V_T, P)#M, C, -1.0/V, P)
+        CFunc = lambda coh: LinearInterp(Coh, C, lower_extrap=True)(coh)
+        V_T = -1.0/self.Util(self.CohGrid, choice)
+        VFunc = lambda coh: LinearInterp(Coh, V_T, lower_extrap=True)(coh)
+        return RetiredDeatonSolution(Coh, C, CFunc, V_T, VFunc)

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from HARK import Solution, AgentType
 from HARK.interpolation import LinearInterp
-from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv
+from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv, makeGridExpMult
 from HARK.simulation import drawMeanOneLognormal
 from math import sqrt
 # might as well alias them utility, as we need CRRA
@@ -132,8 +132,12 @@ class RetiringDeaton(AgentType):
         -------
         None
         """
-        self.PdCohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1], self.PdCohNodes)
-        self.CohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1]*1.5, self.PdCohNodes)
+        # old version, hadn't noticed there was a makeGridExpMult
+        # self.PdCohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1], self.PdCohNodes)
+        # self.CohGrid = nonlinspace(self.PdCohLims[0], self.PdCohLims[1]*1.5, self.PdCohNodes)
+        # makeGridExpMult seems very aggressive, so 20 is far to much to capture all the kinks!
+        self.PdCohGrid = makeGridExpMult(self.PdCohLims[0],  self.PdCohLims[1], self.PdCohNodes, timestonest=1)
+        self.CohGrid = makeGridExpMult(self.PdCohLims[0], self.PdCohLims[1]*1.5, self.PdCohNodes, timestonest=1)
         self.EGMVector = numpy.zeros(self.CohNodes)
 
         if self.TranIncNodes == 0:
