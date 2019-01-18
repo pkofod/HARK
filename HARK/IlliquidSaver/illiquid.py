@@ -74,12 +74,14 @@ IlliquidParams = namedtuple('IlliquidParams', 'Rliq Rilliq DiscFac CRRA sigma ad
 IlliquidSaverParameters = namedtuple('IlliquidSaverParameters',
                                      'DiscFac CRRA Rliq Rilliq sigma')
 
+Shocks = namedtuple('Shocks', 'PermInc TranInc Weights')
+
 
 class IlliquidSaverSolution(Solution):
-    def __init__(self, CFuncs, BFunc, VFuncs):
-        self.C = CFuncs
-        self.B = BFunc
-        self.VFuncs = VFuncs
+    def __init__(self, C, B, V):
+        self.C = C
+        self.B = B
+        self.V = V
 
 
 class IlliquidSaver(AgentType):
@@ -176,49 +178,58 @@ class IlliquidSaver(AgentType):
         self.PermInc, self.TranInc = numpy.meshgrid(self.PermInc, self.TranInc, sparse=True)
         self.PermIncWeights, self.TranIncWeights = numpy.meshgrid(self.PermIncWeights, self.TranIncWeights, sparse=True)
         self.IncWeights = self.PermIncWeights*self.TranIncWeights
-
+        self.shocks = Shocks(self.PermInc, self.TranInc, self.PermIncWeights*self.TranIncWeights)
         # ### solve last illiquid saver
         # ### solve last nonadjuster
         C_nonadjust = grids.M
         CFunc_nonadjust = BilinearInterp(C_nonadjust, grids.m, grids.n)
 
         V_nonadjust = self.Util(C_nonadjust)
-        VFunc_nonadjust = self.stablevalue2d(grids.m, grids.n, V_nonadjust)
 
         # ### solve last adjuster, transfer everything
         C_adjust = grids.M + (1-self.adjcost)*grids.N
-        CFunc_adjust = BilinearInterp(C_adjust, grids.m, grids.n)
 
         V_adjust = self.Util(C_adjust)
-        VFunc_adjust = self.stablevalue2d(grids.m, grids.n, V_adjust)
 
         CFuncs = (CFunc_nonadjust, CFunc_adjust)
         # Remember, B is the function that tells you the CHOICE of B given (m,n),
         # *not* the adjustment which would be adjustment = N-B; here N-0=N
-        BFunc = BilinearInterp(0*grids.M, grids.m, grids.n)
+        B = 0*grids.M
 
-        VFuncs = (VFunc_nonadjust, VFunc_adjust)
-        self.solution_terminal = IlliquidSaverSolution(CFuncs, BFunc, VFuncs)
+        V = (V_nonadjust, V_adjust)
+
+        # The solution hols tuples of Consumption at grids, B-adjustment at grids,
+        # Transformed values at grids
+        self.solution_terminal = IlliquidSaverSolution(C, B, V)
 
 
-def solveIlliquidSaver(grids,):
-
+def solveIlliquidSaver(grids, shocks, par):
+    Ctp1 = solution_next.C # at M x N
+    Btp1 = solution_next.V # at M x N
     # From A, B calculate mtp1, ntp1
-    for b in grids.m:
+    for b in grids.n:
         # We expand the dims to build a matrix
-        mtp1 = Rliq*numpy.expand_dims(grid.aGrid, axis=1) + TranInc.T
-        ntp1 = Rilliq*b
+        mtp1 = par.Rliq*numpy.expand_dims(grids.a, axis=1) + shocks.TranInc.T
+        ntp1 = par.Rilliq*b
 
-        P = calcChoiceProbs(Vs)
+        P = calcChoiceProbs(Vs, par.sigma)
 
-        Ctp1 = calcCtp1((mtp1, ntp1), CFuncs, P)
+        Ctp1 = calcCtp1((mtp1, ntp1), C, P)
 
-        rs_augCoh = numpy.insert(rs_tp1.Coh, 0, 0.0)
-        rs_augC = numpy.insert(rs_tp1.C, 0, 0.0)
-        rs_augV_T = numpy.insert(rs_tp1.V_T, 0, 0.0)
-        ws_augCoh = numpy.insert(ws_tp1.Coh, 0, 0.0)
-        ws_augC = numpy.insert(ws_tp1.C, 0, 0.0)
-        ws_augV_T = numpy.insert(ws_tp1.V_T, 0, 0.0)
+        # Place 0 in the m grid
+        aug_m_nonadjust = numpy.insert(.Coh, 0, 0.0)
+        aug_m_adjust = numpy.insert(ws_tp1.Coh, 0, 0.0)
+        # And the consumption
+        aug_c_nonadjust = numpy.insert(rs_tp1.C, 0, 0.0)
+        aug_c_adjust = numpy.insert(ws_tp1.C, 0, 0.0)
+        # And the TRANSFORMED values (the limit of the transformed values as they go to -Inf is 0)
+        aug_V_T_nonadjust = numpy.insert(rs_tp1.V_T, 0, 0.0)
+        aug_V_T_adjusts = numpy.insert(ws_tp1.V_T, 0, 0.0)
+
+        Cr_tp1 = LinearInterp(rs_augCoh, rs_augC, lower_extrap=True)(Cohrs_tp1)
+        Cw_tp1 = LinearInterp(ws_augCoh, ws_augC, lower_extrap=True)(Cohws_tp1)
+        Vr_T = LinearInterp(rs_augCoh, rs_augV_T, lower_extrap=True)(Cohrs_tp1)
+        Vw_T = LinearInterp(ws_augCoh, ws_augV_T, lower_extrap=True)(Cohws_tp1)
 
         # Calculate the expected marginal utility and expected value function
         Eu[conLen:] =  par.Rfree*numpy.dot((P_tp1[0, :]*UtilP(Cr_tp1, 1) + P_tp1[1, :]*UtilP(Cw_tp1, 2)),TranIncWeights.T)
