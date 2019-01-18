@@ -2,7 +2,7 @@ import numpy
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from HARK import Solution, AgentType
-from HARK.interpolation import LinearInterp, BilinearInterp
+from HARK.interpolation import LinearInterp, BilinearInterp, calcLogSumChoiceProbs, calcLogSum, calcChoiceProbs
 from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv, makeGridExpMult
 from HARK.simulation import drawMeanOneLognormal
 from math import sqrt
@@ -12,8 +12,6 @@ utility       = CRRAutility
 utilityP      = CRRAutilityP
 utilityP_inv  = CRRAutilityP_inv
 utility_inv   = CRRAutility_inv
-
-
 
 # Transforming the value function with the inverse utility function before
 # interpolating can improve precision significantly near the boundary.
@@ -38,6 +36,7 @@ class StableValue1D(StableValue):
         transformed_V = LinearInterp(M, self.utility_inv(V))
 #        return lambda m: self.utility(interp(M, transformed_V, m))
         return lambda m: self.utility(transformed_V(m))
+
 class StableValue2D(StableValue):
     '''
     Creates a stable value function interpolant by applying the utility and
@@ -69,7 +68,8 @@ class StableValue2D(StableValue):
         #return lambda m, n: self.utility_inv(interp(M, N, transformed_V, m, n))
 
 
-
+Grids = namedtuple('Grids', 'm n M N')
+IlliquidParams = namedtuple('IlliquidParams', 'Rliq Rilliq DiscFac CRRA sigma adjcost')
 
 IlliquidSaverParameters = namedtuple('IlliquidSaverParameters',
                                      'DiscFac CRRA Rliq Rilliq sigma')
@@ -106,6 +106,7 @@ class IlliquidSaver(AgentType):
         self.PermIncVar = PermIncVar
         self.PermIncNodes = PermIncNodes
         self.adjcost = adjcost
+        self.par = IlliquidParams(Rliq, Rilliq, DiscFac, CRRA, sigma, adjcost)
 
         self.time_inv = ['AGrid', 'LiqGrid','BGrid', 'IlliqGrid', 'EGMVector',
                          'par', 'Util', 'UtilP', 'UtilP_inv', 'saveCommon', 'TranInc', 'TranIncWeights']
@@ -144,14 +145,16 @@ class IlliquidSaver(AgentType):
         """
 
         self.aGrid = makeGridExpMult(self.MLims[0], self.MLims[1], self.MNodes, timestonest=1)
-        self.mGrid = makeGridExpMult(self.MLims[0], self.MLims[1], self.MNodes, timestonest=1)
+        m = makeGridExpMult(self.MLims[0], self.MLims[1], self.MNodes, timestonest=1)
 
         self.bGrid = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
-        self.nGrid = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
+        n = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
 
         self.aMesh, self.bMesh = numpy.meshgrid(self.aGrid, self.bGrid, indexing = 'ij')
-        self.mMesh, self.nMesh = numpy.meshgrid(self.mGrid, self.nGrid, indexing = 'ij')
+        M, N = numpy.meshgrid(m, n, indexing = 'ij')
 
+        grids = Grids(m, n, M, N)
+        self.grids = grids
 
         self.EGMVector = numpy.zeros(self.MNodes)
 
@@ -170,36 +173,43 @@ class IlliquidSaver(AgentType):
             self.PermInc = numpy.exp(-self.PermIncVar/2.0 + sqrt(2)*sqrt(self.PermIncVar)*self.PermInc)
             self.PermIncWeights = self.PermIncWeights/sqrt(numpy.pi)
 
-        # solve last illiquid saver
-        C_nonadjust = self.mMesh
-        CFunc_nonadjust = BilinearInterp(C_nonadjust, self.mGrid, self.nGrid)
+        self.PermInc, self.TranInc = numpy.meshgrid(self.PermInc, self.TranInc, sparse=True)
+        self.PermIncWeights, self.TranIncWeights = numpy.meshgrid(self.PermIncWeights, self.TranIncWeights, sparse=True)
+        self.IncWeights = self.PermIncWeights*self.TranIncWeights
+
+        # ### solve last illiquid saver
+        # ### solve last nonadjuster
+        C_nonadjust = grids.M
+        CFunc_nonadjust = BilinearInterp(C_nonadjust, grids.m, grids.n)
 
         V_nonadjust = self.Util(C_nonadjust)
-        VFunc_nonadjust = self.stablevalue2d(self.mGrid, self.nGrid, V_nonadjust)
+        VFunc_nonadjust = self.stablevalue2d(grids.m, grids.n, V_nonadjust)
 
-        # If you adjust, transfer everything
-        C_adjust = self.mMesh + (1-self.adjcost)*self.nMesh
-        CFunc_adjust = BilinearInterp(C_adjust, self.mGrid, self.nGrid)
+        # ### solve last adjuster, transfer everything
+        C_adjust = grids.M + (1-self.adjcost)*grids.N
+        CFunc_adjust = BilinearInterp(C_adjust, grids.m, grids.n)
 
         V_adjust = self.Util(C_adjust)
-        VFunc_adjust = self.stablevalue2d(self.mGrid, self.nGrid, V_adjust)
+        VFunc_adjust = self.stablevalue2d(grids.m, grids.n, V_adjust)
 
-        CFuncs = (C_nonadjust, C_adjust)
-        BFunc = BilinearInterp(0*self.mMesh, self.mGrid, self.nGrid)
+        CFuncs = (CFunc_nonadjust, CFunc_adjust)
+        # Remember, B is the function that tells you the CHOICE of B given (m,n),
+        # *not* the adjustment which would be adjustment = N-B; here N-0=N
+        BFunc = BilinearInterp(0*grids.M, grids.m, grids.n)
 
         VFuncs = (VFunc_nonadjust, VFunc_adjust)
         self.solution_terminal = IlliquidSaverSolution(CFuncs, BFunc, VFuncs)
 
 
-def solveIlliquidSaver():
+def solveIlliquidSaver(grids,):
 
     # From A, B calculate mtp1, ntp1
-    for all b in mGrid:
+    for b in grids.m:
         # We expand the dims to build a matrix
         mtp1 = Rliq*numpy.expand_dims(grid.aGrid, axis=1) + TranInc.T
         ntp1 = Rilliq*b
 
-        P = calcDiscretePolicies(Vs)
+        P = calcChoiceProbs(Vs)
 
         Ctp1 = calcCtp1((mtp1, ntp1), CFuncs, P)
 
@@ -228,6 +238,7 @@ def solveIlliquidSaver():
         # We do the envelope step in transformed value space for accuracy. The values
         # keep their monotonicity under our transformation.
         Coh, C, V_T = multilineEnvelope(Coh, C, V_T, CohGrid)
+
     return None
 
 def createCtp1(states, CFuncs, P):
