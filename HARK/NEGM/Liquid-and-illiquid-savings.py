@@ -27,8 +27,4 @@
 
 # -
 
-# # A Gentle Introduction to NEGM
-
-
-
-
+# # Liquid and illiquid savings
