@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: b69335e63bf541848311deb1468d50b3
-#     lastKernelId: 797840ac-a7fe-412e-8024-54bcbf5d0fef
+#     lastCommId: 37e07e53d42a4c4b982f72693f92ea8e
+#     lastKernelId: ecbe6490-8979-4e1e-9bd5-1b1f5f650c2f
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -25,6 +25,14 @@
 #     version: 3.6.5
 # ---
 
-# -
-
 # # Liquid and illiquid savings
+
+from illiquid import IlliquidSaver
+
+illsaver = IlliquidSaver()
+
+illsaver.updateLast()
+
+illsaver.solution_terminal.V_T
+
+

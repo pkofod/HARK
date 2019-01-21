@@ -1,8 +1,10 @@
+# Permanent income is not full implemented yet
+
 import numpy
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from HARK import Solution, AgentType
-from HARK.interpolation import LinearInterp, BilinearInterp, calcLogSumChoiceProbs, calcLogSum, calcChoiceProbs
+from HARK.interpolation import LinearInterp, BilinearInterp
 from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv, makeGridExpMult
 from HARK.simulation import drawMeanOneLognormal
 from math import sqrt
@@ -31,10 +33,12 @@ class StableValue1D(StableValue):
     '''
     def __init__(self, utility, utility_inv):
         StableValue.__init__(self, utility, utility_inv)
-    def __call__(self, M, V):
-        # transformed_V = self.utility_inv(V)
-        transformed_V = LinearInterp(M, self.utility_inv(V))
-#        return lambda m: self.utility(interp(M, transformed_V, m))
+    def __call__(self, M, V, isTransformed=False):
+        if isTransformed:
+            transformedV = V
+        else:
+            transformed_V = LinearInterp(M, self.utility_inv(V))
+
         return lambda m: self.utility(transformed_V(m))
 
 class StableValue2D(StableValue):
@@ -47,7 +51,7 @@ class StableValue2D(StableValue):
     '''
     def __init__(self, utility, utility_inv):
         StableValue.__init__(self, utility, utility_inv)
-    def __call__(self, M, N, V):
+    def __call__(self, M, N, V, isTransformed=False):
         '''
         Constructs a stable interpolation by transforming the values prior to
         evaluating the interpolant at (M, N) and applying the inverse trans-
@@ -61,13 +65,15 @@ class StableValue2D(StableValue):
         V : numpy.array
             mesh of values.
         '''
-        transformed_V = BilinearInterp(self.utility_inv(V), M, N)
-        #transformed_V = self.utility(V)
+
+        if isTransformed:
+            transformedV = BilinearInterp(V, M, N)
+        else:
+            transformed_V = BilinearInterp(self.utility_inv(V), M, N)
 
         return lambda m, n: self.utility(transformed_V(m, n))
-        #return lambda m, n: self.utility_inv(interp(M, N, transformed_V, m, n))
 
-
+# === Named tuple definitions === #
 Grids = namedtuple('Grids', 'm n M N')
 IlliquidParams = namedtuple('IlliquidParams', 'Rliq Rilliq DiscFac CRRA sigma adjcost')
 
@@ -76,13 +82,16 @@ IlliquidSaverParameters = namedtuple('IlliquidSaverParameters',
 
 Shocks = namedtuple('Shocks', 'PermInc TranInc Weights')
 
+Utility = namedtuple('Utility', 'u inv P P_inv lambda')
 
 class IlliquidSaverSolution(Solution):
-    def __init__(self, C, B, V):
+    def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc):
         self.C = C
+        self.CFunc = CFunc
         self.B = B
-        self.V = V
-
+        self.BFunc = BFunc
+        self.V_T = V_T
+        self.V_TFunc = V_TFunc
 
 class IlliquidSaver(AgentType):
     def __init__(self, DiscFac=0.98, Rliq=1.02, Rilliq=1.04,
@@ -90,7 +99,7 @@ class IlliquidSaver(AgentType):
                  TranIncVar = 0.085,
                  TranIncNodes = 6,
                  PermIncVar = 0.073,
-                 PermIncNodes = 6,
+                 PermIncNodes = 0,
                  LiqNodes=2000,
                  MLims=(1e-6, 10), MNodes=100,
                  NLims=(1e-6, 10), NNodes=100,
@@ -147,10 +156,10 @@ class IlliquidSaver(AgentType):
         """
 
         self.aGrid = makeGridExpMult(self.MLims[0], self.MLims[1], self.MNodes, timestonest=1)
-        m = makeGridExpMult(self.MLims[0], self.MLims[1], self.MNodes, timestonest=1)
+        m = makeGridExpMult(0, self.MLims[1], self.MNodes, timestonest=1)
 
         self.bGrid = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
-        n = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
+        n = makeGridExpMult(0, self.NLims[1], self.NNodes, timestonest=1)
 
         self.aMesh, self.bMesh = numpy.meshgrid(self.aGrid, self.bGrid, indexing = 'ij')
         M, N = numpy.meshgrid(m, n, indexing = 'ij')
@@ -160,6 +169,7 @@ class IlliquidSaver(AgentType):
 
         self.EGMVector = numpy.zeros(self.MNodes)
 
+        # Construct transitory income shock nodes and weights.
         if self.TranIncNodes == 0:
             self.TranInc = numpy.ones(1)
             self.TranIncWeights = numpy.ones(1)
@@ -167,6 +177,8 @@ class IlliquidSaver(AgentType):
             self.TranInc, self.TranIncWeights = numpy.polynomial.hermite.hermgauss(self.TranIncNodes)
             self.TranInc = numpy.exp(-self.TranIncVar/2.0 + sqrt(2)*sqrt(self.TranIncVar)*self.TranInc)
             self.TranIncWeights = self.TranIncWeights/sqrt(numpy.pi)
+
+        # Construct permanent income shock nodes and weights.
         if self.PermIncNodes == 0:
             self.PermInc = numpy.ones(1)
             self.PermIncWeights = numpy.ones(1)
@@ -179,63 +191,56 @@ class IlliquidSaver(AgentType):
         self.PermIncWeights, self.TranIncWeights = numpy.meshgrid(self.PermIncWeights, self.TranIncWeights, sparse=True)
         self.IncWeights = self.PermIncWeights*self.TranIncWeights
         self.shocks = Shocks(self.PermInc, self.TranInc, self.PermIncWeights*self.TranIncWeights)
+
         # ### solve last illiquid saver
-        # ### solve last nonadjuster
-        C_nonadjust = grids.M
-        CFunc_nonadjust = BilinearInterp(C_nonadjust, grids.m, grids.n)
-
-        V_nonadjust = self.Util(C_nonadjust)
-
         # ### solve last adjuster, transfer everything
-        C_adjust = grids.M + (1-self.adjcost)*grids.N
+        C = grids.M + (1-self.adjcost)*grids.N
+        CFunc = BilinearInterp(C, grids.m, grids.n)
 
-        V_adjust = self.Util(C_adjust)
-
-        CFuncs = (CFunc_nonadjust, CFunc_adjust)
         # Remember, B is the function that tells you the CHOICE of B given (m,n),
         # *not* the adjustment which would be adjustment = N-B; here N-0=N
         B = 0*grids.M
+        BFunc = BilinearInterp(B, grids.m, grids.n)
 
-        V = (V_nonadjust, V_adjust)
+        V_T = numpy.divide(-1.0, self.Util(C))
+        V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
-        # The solution hols tuples of Consumption at grids, B-adjustment at grids,
-        # Transformed values at grids
-        self.solution_terminal = IlliquidSaverSolution(C, B, V)
+        self.solution_terminal = IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
 
 
-def solveIlliquidSaver(grids, shocks, par):
-    Ctp1 = solution_next.C # at M x N
-    Btp1 = solution_next.V # at M x N
-    # From A, B calculate mtp1, ntp1
+def solveIlliquidSaver(solution_next, EGMVector, grids, shocks, par):
+    consumptionSolution = solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par)
+    adjustmentSolution = solveIlliquidSaverAdjustment(solution_next, consumptionSolution, grids, shocks, par)
+
+    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+
+def solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par):
+    Ctp1 = solution_next.CFunc # at M x N
+    V_Ttp1 = solution_next.V_TFunc # at M x N
+
+    aLen = len(grids.a)
+    conLen = len(grids.m) - aLen
+
+    EutilityP = numpy.copy(EGMVector)
+    Ev = numpy.copy(EGMVector)
+
     for b in grids.n:
+        # From A, b ∈ B calculate mtp1, ntp1
         # We expand the dims to build a matrix
         mtp1 = par.Rliq*numpy.expand_dims(grids.a, axis=1) + shocks.TranInc.T
+        # We're solving on b, and the return is deterministic, so ntp1 is simply
+        # b + investment returns
         ntp1 = par.Rilliq*b
 
-        P = calcChoiceProbs(Vs, par.sigma)
-
-        Ctp1 = calcCtp1((mtp1, ntp1), C, P)
-
-        # Place 0 in the m grid
-        aug_m_nonadjust = numpy.insert(.Coh, 0, 0.0)
-        aug_m_adjust = numpy.insert(ws_tp1.Coh, 0, 0.0)
-        # And the consumption
-        aug_c_nonadjust = numpy.insert(rs_tp1.C, 0, 0.0)
-        aug_c_adjust = numpy.insert(ws_tp1.C, 0, 0.0)
-        # And the TRANSFORMED values (the limit of the transformed values as they go to -Inf is 0)
-        aug_V_T_nonadjust = numpy.insert(rs_tp1.V_T, 0, 0.0)
-        aug_V_T_adjusts = numpy.insert(ws_tp1.V_T, 0, 0.0)
-
-        Cr_tp1 = LinearInterp(rs_augCoh, rs_augC, lower_extrap=True)(Cohrs_tp1)
-        Cw_tp1 = LinearInterp(ws_augCoh, ws_augC, lower_extrap=True)(Cohws_tp1)
-        Vr_T = LinearInterp(rs_augCoh, rs_augV_T, lower_extrap=True)(Cohrs_tp1)
-        Vw_T = LinearInterp(ws_augCoh, ws_augV_T, lower_extrap=True)(Cohws_tp1)
+        Cbtp1 = Ctp1(mtp1, ntp1)
+        Vb_Ttp1 =V_Ttp1(mtp1, ntp1)
 
         # Calculate the expected marginal utility and expected value function
-        Eu[conLen:] =  par.Rfree*numpy.dot((P_tp1[0, :]*UtilP(Cr_tp1, 1) + P_tp1[1, :]*UtilP(Cw_tp1, 2)),TranIncWeights.T)
-        Ev[conLen:] = numpy.squeeze(numpy.divide(-1.0, numpy.dot(numpy.expand_dims(V_T, axis=1), TranIncWeights.T)))
+        EutilityP[conLen:] = par.Rfree*numpy.dot(Cbtp1, shocks.TranIncWeights.T)
+        Ev[conLen:] = numpy.squeeze(numpy.divide(-1.0, numpy.dot(numpy.expand_dims(Vb_Ttp1, axis=1), shocks.TranIncWeights.T)))
+
         # EGM step
-        C[conLen:] = UtilP_inv(par.DiscFac*Eu[conLen:], choice)
+        C[conLen:] = UtilP_inv(par.DiscFac*EutilityP[conLen:])
         Coh[conLen:] = PdCohGrid + C[conLen:]
 
         # Add points to M (and C) to solve between 0 and the first point EGM finds
@@ -250,12 +255,47 @@ def solveIlliquidSaver(grids, shocks, par):
         # keep their monotonicity under our transformation.
         Coh, C, V_T = multilineEnvelope(Coh, C, V_T, CohGrid)
 
-    return None
+        CFunc
+        return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
 
-def createCtp1(states, CFuncs, P):
-    m, n = states
-    Ctp1_nonadjust = CFuncs[0](m, n)
-    Ctp1_adjust = CFuncs[1](m, n)
+def solveIlliquidSaverAdjustment(solution_next, consumptionSolution, W, grids, shocks, par):
+    Cstar = consumptionSolution.CFunc
 
-    Ctp1 = Ctp1_nonadjust*P[0] + Ctp1_adjust*P[1]
-    return Ctp1
+    X = grids.m
+    possibleAdj = [0.0, 0.25, 0.5, 0.75, 0.99]
+
+    Cadjust = numpy.zeros(len(X))
+    Badjust = numpy.zeros(len(X))
+    Vadjust = numpy.zeros(len(X))
+
+    cCandidates = numpy.zeros(len(X))
+    bCandidates = numpy.zeros(len(X))
+    vCandidates = numpy.zeros(len(X))
+
+    xIdx = 0
+    for x in X:
+
+        candidateCounter = 0
+        for adj in possibleAdj:
+            b = adj*x
+            m = x-b
+            n = b
+            c = Cstar(m, n)
+            a = m - c
+            bCandidates[candidateCounter] = b
+            cCandidates[candidateCounter] = c
+            vCandidates[candidateCounter] = Util(c) + par.DiscFac*W(a, b)
+            candidateCounter += 1
+
+        optimizerIdx = numpy.argmax(vCandidates)
+        Cadjust[xIdx] = cCandidates[optimizerIdx]
+        Badjust[xIdx] = cCandidates[optimizerIdx]
+        Vadjust[xIdx] = vCandidates[optimizerIdx]
+        xIdx += 1
+
+    BFunc = LinearInterp(X, Badjust)
+    CFunc = LinearInterp(X, Cadjust)
+    CFunc = LinearInterp(X, Cadjust)
+    VFunc = LinearInterp(X, Vadjust)
+
+    return BFunc
