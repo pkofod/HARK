@@ -80,9 +80,9 @@ IlliquidParams = namedtuple('IlliquidParams', 'Rliq Rilliq DiscFac CRRA sigma ad
 IlliquidSaverParameters = namedtuple('IlliquidSaverParameters',
                                      'DiscFac CRRA Rliq Rilliq sigma')
 
-Shocks = namedtuple('Shocks', 'PermInc TranInc Weights')
+Shocks = namedtuple('Shocks', 'PermInc TranInc TranIncWeights Weights')
 
-Utility = namedtuple('Utility', 'u inv P P_inv lambda')
+Utility = namedtuple('Utility', 'u inv P P_inv adjcost')
 
 class IlliquidSaverSolution(Solution):
     def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc):
@@ -167,6 +167,14 @@ class IlliquidSaver(AgentType):
         grids = Grids(m, n, M, N)
         self.grids = grids
 
+        # Create lambdas do avoid passing in parameters everywhere
+        self.utility = Utility(lambda c: CRRAutility(c, self.par.CRRA),
+                               lambda u: CRRAutility_inv(u, self.par.CRRA),
+                               lambda c: CRRAutilityP(c, self.par.CRRA),
+                               lambda u: CRRAutilityP_inv(u, self.par.CRRA),
+                               self.adjcost)
+
+
         self.EGMVector = numpy.zeros(self.MNodes)
 
         # Construct transitory income shock nodes and weights.
@@ -190,7 +198,7 @@ class IlliquidSaver(AgentType):
         self.PermInc, self.TranInc = numpy.meshgrid(self.PermInc, self.TranInc, sparse=True)
         self.PermIncWeights, self.TranIncWeights = numpy.meshgrid(self.PermIncWeights, self.TranIncWeights, sparse=True)
         self.IncWeights = self.PermIncWeights*self.TranIncWeights
-        self.shocks = Shocks(self.PermInc, self.TranInc, self.PermIncWeights*self.TranIncWeights)
+        self.shocks = Shocks(self.PermInc, self.TranInc, self.TranIncWeights, self.PermIncWeights*self.TranIncWeights)
 
         # ### solve last illiquid saver
         # ### solve last adjuster, transfer everything
@@ -209,8 +217,26 @@ class IlliquidSaver(AgentType):
 
 
 def solveIlliquidSaver(solution_next, EGMVector, grids, shocks, par):
-    consumptionSolution = solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par)
-    adjustmentSolution = solveIlliquidSaverAdjustment(solution_next, consumptionSolution, grids, shocks, par)
+
+    W = calcW(solution_next, grids, shocks, par)
+
+    CNon, CNonFunc, VNon_T, V_TNonFunc = solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par)
+    BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, grids, shocks, par)
+
+    BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
+    CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
+
+    V, P = calcLogSumChoiceProbs((V_TNonFunc, V_TAdjustX), par.sigma)
+
+    B = P[0]*grids.M*0 + P[1]*BAdjust
+    BFunc = BilinearInterp(B, grids.m, grids.n)
+
+    C = P[0]*CNon + P[1]*CAdjustX
+    CFunc = BilinearInterp(C, grids.m, grids.n)
+
+
+    V_T = numpy.divide(-1.0, V)
+    V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
     return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
 
@@ -245,7 +271,7 @@ def solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par):
 
         # Add points to M (and C) to solve between 0 and the first point EGM finds
         # (that is add the solution in the segment where the agent is constrained)
-        Coh[0:conLen] = numpy.linspace(numpy.min(PdCohGrid), Coh[conLen]*0.99, conLen)
+        Coh[0:conLen] = numpy.linspace(0, Coh[conLen]*0.99, conLen)
         C[0:conLen] = Coh[0:conLen]
 
         Ev[0:conLen] = Ev[conLen+1]
@@ -255,11 +281,11 @@ def solveIlliquidSaverConsumption(solution_next, EGMVector, grids, shocks, par):
         # keep their monotonicity under our transformation.
         Coh, C, V_T = multilineEnvelope(Coh, C, V_T, CohGrid)
 
-        CFunc
-        return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+    CFunc = BilinearInterp(C, m, n)
+    V_TFunc = BilinearInterp(V_T, m, n)
+    return C, CFunc, V_T, V_TFunc
 
-def solveIlliquidSaverAdjustment(solution_next, consumptionSolution, W, grids, shocks, par):
-    Cstar = consumptionSolution.CFunc
+def solveIlliquidSaverAdjustment(solution_next, Cstar, W, grids, shocks, par):
 
     X = grids.m
     possibleAdj = [0.0, 0.25, 0.5, 0.75, 0.99]
@@ -299,3 +325,14 @@ def solveIlliquidSaverAdjustment(solution_next, consumptionSolution, W, grids, s
     VFunc = LinearInterp(X, Vadjust)
 
     return BFunc
+
+def calcW(solution_next, grids, shocks, par):
+    W_T = grids.M*0
+    tiIdx = 0
+    for ti in shocks.TranInc:
+        mtp1 = par.Rliq*grids.M + ti
+        ntp1 = par.Rilliq*grids.N
+        W_T += solution_next.V_T(mtp1, ntp1)*shocks.TranIncWeights[tiIdx]
+        tiIdx += 1
+
+    W = numpy.divide(-1.0, W_T)

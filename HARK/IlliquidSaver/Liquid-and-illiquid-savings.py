@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: 37e07e53d42a4c4b982f72693f92ea8e
-#     lastKernelId: ecbe6490-8979-4e1e-9bd5-1b1f5f650c2f
+#     lastCommId: 2f7b70dd90ae4d089866756bf3a3b8eb
+#     lastKernelId: 87fdd71a-fcbb-42c1-9dcd-4071157e6b5c
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -22,7 +22,7 @@
 #     name: python
 #     nbconvert_exporter: python
 #     pygments_lexer: ipython3
-#     version: 3.6.5
+#     version: 3.6.4
 # ---
 
 # # Liquid and illiquid savings
