@@ -343,6 +343,7 @@ def rise_and_fall(x, v):
 
 # think! nanargmax makes everythign super ugly because numpy changed the wraning
 # in all nan slices to a valueerror...it's nans, aaarghgghg
+# What if there are no kinks?
 def multilineEnvelope(M, C, V_T, CohGrid):
     """
     Do the envelope step of DCEGM.
@@ -357,12 +358,9 @@ def multilineEnvelope(M, C, V_T, CohGrid):
     """
     m_len = len(CohGrid)
     rise, fall = rise_and_fall(M, V_T)
-    print(rise)
-    print(fall)
-    plt.plot(M[210:220], numpy.divide(-1.0, V_T)[210:220])
 
     # Add the last point to the vector for convenience below
-    fall = numpy.append(fall, m_len)
+    fall = numpy.append(fall, len(M)-1)
     # The number of kinks are the number of time the grid falls
     num_kinks = len(fall)
 
@@ -371,14 +369,11 @@ def multilineEnvelope(M, C, V_T, CohGrid):
     mV_T[:] = numpy.nan
     mC = numpy.empty((m_len, num_kinks))
     mC[:] = numpy.nan
-    print(num_kinks)
-    print(rise)
-    print(fall)
+
     # understand this : # TAKE THE FIRST ONE BY HAND: prevent all the PdCohNodesN-stuff..
     for j in range(num_kinks):
         # Find all common grid
         below = M[rise[j]] >= CohGrid
-        print(fall[j])
         above = M[fall[j]] <= CohGrid
         in_range = below + above == 0 # neither above nor below
         idxs = range(rise[j], fall[j]+1)

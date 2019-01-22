@@ -568,7 +568,7 @@ def multilineEnvelope(M, C, V_T, CohGrid):
 
 
     # Add the last point to the vector for convenience below
-    fall = numpy.append(fall, m_len)
+    fall = numpy.append(fall, len(M)-1)
     # The number of kinks are the number of time the grid falls
     num_kinks = len(fall)
 
