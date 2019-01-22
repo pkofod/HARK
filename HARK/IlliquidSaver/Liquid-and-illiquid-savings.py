@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: 2f7b70dd90ae4d089866756bf3a3b8eb
-#     lastKernelId: 87fdd71a-fcbb-42c1-9dcd-4071157e6b5c
+#     lastCommId: 493edb500e834cfab9155cc952e200e4
+#     lastKernelId: 24e0f69d-c4cd-48b7-811b-0d0807abe02a
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -34,5 +34,57 @@ illsaver = IlliquidSaver()
 illsaver.updateLast()
 
 illsaver.solution_terminal.V_T
+
+illsaver.solve()
+
+# +
+import numpy
+import matplotlib.pyplot as plt
+
+
+from mpl_toolkits import mplot3d
+
+
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+
+X, Y = numpy.meshgrid(illsaver.grids.m[40:], illsaver.grids.n[40:])
+f = illsaver.solution_terminal.V_TFunc
+Z = numpy.divide(-1,f(X, Y))
+
+ax.plot_surface(X, Y, Z)
+
+
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+
+X, Y = numpy.meshgrid(illsaver.grids.m[40:], illsaver.grids.n[40:])
+f = illsaver.solution_terminal.V_TFunc
+Z = numpy.divide(-1,f(X, Y))
+
+ax.plot_surface(X, Y, Z)
+
+
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+
+X, Y = numpy.meshgrid(illsaver.grids.m[200:], illsaver.grids.n[100:])
+f = illsaver.solution[0]
+Z = f(X, Y)
+
+ax.plot_surface(X, Y, Z)
+
+
+
+# -
 
 
