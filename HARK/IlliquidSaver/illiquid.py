@@ -36,10 +36,11 @@ class IlliquidSaver(AgentType):
                  TranIncNodes = 6,
                  PermIncVar = 0.073,
                  PermIncNodes = 0,
-                 ALims=(1e-6, 8), ANodes=1800,
-                 MLims=(1e-6, 10), MNodes=2000,
-                 NLims=(1e-6, 10), NNodes=2000,
-                 XLims=(1e-6, 10), XNodes=2000,
+                 ALims=(1e-6, 8), ANodes=700,
+                 MLims=(1e-6, 15), MNodes=1000,
+                 BLims=(1e-6, 8), BNodes=1000,
+                 NLims=(1e-6, 15), NNodes=1000,
+                 XLims=(1e-6, 10), XNodes=1000,
                  adjcost=0.02,
                  saveCommon=False,
                  **kwds):
@@ -60,8 +61,10 @@ class IlliquidSaver(AgentType):
 
         self.par = IlliquidSaverParameters(DiscFac, CRRA, Rliq, Rilliq, sigma)
         self.MLims = MLims
+        self.ALims = MLims
         self.ANodes = MNodes
         self.MNodes = MNodes
+        self.BLims = NLims
         self.NLims = NLims
         self.NNodes = NNodes
 
@@ -85,7 +88,7 @@ class IlliquidSaver(AgentType):
         a = makeGridExpMult(self.MLims[0], self.MLims[1], self.ANodes, timestonest=1)
         m = makeGridExpMult(0, self.MLims[1], self.MNodes, timestonest=1)
 
-        b = makeGridExpMult(self.NLims[0], self.NLims[1], self.NNodes, timestonest=1)
+        b = makeGridExpMult(self.BLims[0], self.BLims[1], self.BNodes, timestonest=1)
         n = makeGridExpMult(0, self.NLims[1], self.NNodes, timestonest=1)
 
         A, B = numpy.meshgrid(a, b, indexing = 'ij')
@@ -185,7 +188,7 @@ def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
     aLen = len(grids.a)
     conLen = len(Coh) - aLen
 
-    for b in grids.n:
+    for b in grids.b:
         print(b)
         # From A, b ∈ B calculate mtp1, ntp1
         # We expand the dims to build a matrix
@@ -356,6 +359,7 @@ def multilineEnvelope(M, C, V_T, CohGrid):
 
 
     """
+    print("Do multilineEnvelope step")
     m_len = len(CohGrid)
     rise, fall = rise_and_fall(M, V_T)
 
@@ -363,14 +367,16 @@ def multilineEnvelope(M, C, V_T, CohGrid):
     fall = numpy.append(fall, len(M)-1)
     # The number of kinks are the number of time the grid falls
     num_kinks = len(fall)
-
+    print(num_kinks)
+    print(rise)
+    print(fall)
     # Use these segments to sequentially find upper envelopes
     mV_T = numpy.empty((m_len, num_kinks))
     mV_T[:] = numpy.nan
     mC = numpy.empty((m_len, num_kinks))
     mC[:] = numpy.nan
 
-    # understand this : # TAKE THE FIRST ONE BY HAND: prevent all the PdCohNodesN-stuff..
+    # understand this : # TAKE THE FIRST ONE BY HAND: prevent all the NaN-stuff..
     for j in range(num_kinks):
         # Find all common grid
         below = M[rise[j]] >= CohGrid
@@ -384,7 +390,7 @@ def multilineEnvelope(M, C, V_T, CohGrid):
 
     is_all_nan = numpy.array([numpy.all(numpy.isnan(mvrow)) for mvrow in mV_T])
     # Now take the max of all these functions. Since the mV_T
-    # is either PdCohNodesN or very low number outside the range of the actual line-segment this works "globally"
+    # is either NaN or very low number outside the range of the actual line-segment this works "globally"
     idx_max = numpy.zeros(CohGrid.size, dtype = int) # this one might be wrong if is_all_nan[0] == True
     idx_max[is_all_nan == False] = numpy.nanargmax(mV_T[is_all_nan == False], axis=1)
 
@@ -394,26 +400,30 @@ def multilineEnvelope(M, C, V_T, CohGrid):
 
     upperV_T[is_all_nan == False] = numpy.nanmax(mV_T[is_all_nan == False, :], axis=1)
     upperM = numpy.copy(CohGrid)
-    # Ad the zero point in the bottom
+    # Add the zero point in the bottom
     if numpy.isnan(upperV_T[0]):
         upperV_T[0] = 0 # Since M=0 here
-        mC[0,0]  = upperM[1]
+        mC[0]  = upperM[1]
 
     # Extrapolate if NaNs are introduced due to the common grid
     # going outside all the sub-line segments
-    IsPdCohNodesN = numpy.isnan(upperV_T)
-    upperV_T[IsPdCohNodesN] = LinearInterp(upperM[IsPdCohNodesN == False], upperV_T[IsPdCohNodesN == False], lower_extrap=True)(upperM[IsPdCohNodesN])
-    upperV_T[IsPdCohNodesN] = LinearInterp(upperM[IsPdCohNodesN == False], upperV_T[IsPdCohNodesN == False], lower_extrap=True)(upperM[IsPdCohNodesN])
-    LastBeforePdCohNodesN = numpy.append(numpy.diff(IsPdCohNodesN)>0, 0)
-    LastId = LastBeforePdCohNodesN*idx_max # Find last id-number
-    idx_max[IsPdCohNodesN] = LastId[IsPdCohNodesN]
+    IsNaN = numpy.isnan(upperV_T)
+    print(IsNaN[1:].all())
+    print(IsNaN.any())
+    print(upperM[IsNaN == False].shape)
+    print(upperV_T[IsNaN == False].shape)
+    print(upperM[IsNaN].shape)
+    upperV_T[IsNaN] = LinearInterp(upperM[IsNaN == False], upperV_T[IsNaN == False], lower_extrap=True)(upperM[IsNaN])
+    LastBeforeNaN = numpy.append(numpy.diff(IsNaN)>0, 0)
+    LastId = LastBeforeNaN*idx_max # Find last id-number
+    idx_max[IsNaN] = LastId[IsNaN]
 
     # Linear index used to get optimal consumption based on "id"  from max
     ncols = mC.shape[1]
     rowidx = numpy.cumsum(ncols*numpy.ones(len(CohGrid), dtype=int))-ncols
     idx_linear = numpy.unravel_index(rowidx+idx_max, mC.shape)
     upperC = mC[idx_linear]
-    upperC[IsPdCohNodesN] = LinearInterp(upperM[IsPdCohNodesN==0], upperC[IsPdCohNodesN==0])(upperM[IsPdCohNodesN])
+    upperC[IsNaN] = LinearInterp(upperM[IsNaN==0], upperC[IsNaN==0])(upperM[IsNaN])
 
     # TODO calculate cross points of line segments to get the true vertical drops
 
