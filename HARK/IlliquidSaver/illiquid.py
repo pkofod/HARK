@@ -36,7 +36,7 @@ class IlliquidSaver(AgentType):
                  TranIncNodes = 6,
                  PermIncVar = 0.073,
                  PermIncNodes = 0,
-                 ALims=(1e-6, 8), ANodes=700,
+                 ALims=(1e-6, 8), ANodes=900,
                  MLims=(1e-6, 15), MNodes=1000,
                  BLims=(1e-6, 8), BNodes=1000,
                  NLims=(1e-6, 15), NNodes=1000,
@@ -60,13 +60,14 @@ class IlliquidSaver(AgentType):
         self.time_vary = []
 
         self.par = IlliquidSaverParameters(DiscFac, CRRA, Rliq, Rilliq, sigma)
-        self.MLims = MLims
-        self.ALims = MLims
-        self.ANodes = MNodes
         self.MNodes = MNodes
-        self.BLims = NLims
-        self.NLims = NLims
+        self.ANodes = ANodes
+        self.BNodes = BNodes
         self.NNodes = NNodes
+        self.MLims = MLims
+        self.ALims = ALims
+        self.BLims = BLims
+        self.NLims = NLims
 
         self.preSolve = self.updateLast
         self.solveOnePeriod = solveIlliquidSaver
@@ -153,25 +154,27 @@ def solveIlliquidSaver(solution_next, utility, grids, shocks, par):
 
     W = calcW(solution_next, grids, shocks, par)
 
-    CNon, CNonFunc, VNon_T, V_TNonFunc = solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par)
-    BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, grids, shocks, par)
-
-    BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
-    CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
-
-    V, P = calcLogSumChoiceProbs((V_TNonFunc, V_TAdjustX), par.sigma)
-
-    B = P[0]*grids.M*0 + P[1]*BAdjust
-    BFunc = BilinearInterp(B, grids.m, grids.n)
-
-    C = P[0]*CNon + P[1]*CAdjustX
-    CFunc = BilinearInterp(C, grids.m, grids.n)
-
-
-    V_T = numpy.divide(-1.0, V)
-    V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
-
-    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+    Coh_ab, CNon, CNonFunc, VNon_T, V_TNonFunc = solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par)
+    BFunc = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
+    return (Coh_ab, CNon, CNonFunc, VNon_T, V_TNonFunc, BFunc)
+    # BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
+    #
+    # BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
+    # CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
+    #
+    # V, P = calcLogSumChoiceProbs((V_TNonFunc, V_TAdjustX), par.sigma)
+    #
+    # B = P[0]*grids.M*0 + P[1]*BAdjust
+    # BFunc = BilinearInterp(B, grids.m, grids.n)
+    #
+    # C = P[0]*CNon + P[1]*CAdjustX
+    # CFunc = BilinearInterp(C, grids.m, grids.n)
+    #
+    #
+    # V_T = numpy.divide(-1.0, V)
+    # V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
+    #
+    # return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
 
 
 def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
@@ -185,11 +188,14 @@ def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
     C = numpy.copy(grids.EGMVector)
     Coh = numpy.copy(grids.EGMVector)
 
+    Coh_ab = numpy.zeros((len(grids.EGMVector), len(grids.b)))
+    C_ab = numpy.zeros((len(grids.EGMVector), len(grids.b)))
+    V_T_ab = numpy.zeros((len(grids.EGMVector), len(grids.b)))
+
     aLen = len(grids.a)
     conLen = len(Coh) - aLen
-
+    ib = 0
     for b in grids.b:
-        print(b)
         # From A, b ∈ B calculate mtp1, ntp1
         # We expand the dims to build a matrix
         mtp1 = par.Rliq*numpy.expand_dims(grids.a, axis=1) + shocks.TranInc.T
@@ -219,15 +225,19 @@ def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
         # We do the envelope step in transformed value space for accuracy. The values
         # keep their monotonicity under our transformation.
         Coh, C, V_T = multilineEnvelope(Coh, C, V_T, grids.m)
+        Coh_ab[:, ib] = Coh
+        C_ab[:, ib] = C
+        V_T_ab[:, ib] = V_T
+        ib += 1
 
-    CFunc = BilinearInterp(C, m, n)
-    V_TFunc = BilinearInterp(V_T, m, n)
-    return C, CFunc, V_T, V_TFunc
+    CFunc = BilinearInterp(C_ab, m, n)
+    V_TFunc = BilinearInterp(V_T_ab, m, n)
+    return Coh_ab, C_ab, CFunc, V_T_ab, V_TFunc
 
 def solveIlliquidSaverAdjustment(solution_next, Cstar, W, utility, grids, shocks, par):
 
     X = grids.m
-    possibleAdj = [0.0, 0.25, 0.5, 0.75, 0.99]
+    possibleAdj = numpy.arange(0, 0.99, 100)
 
     Cadjust = numpy.zeros(len(X))
     Badjust = numpy.zeros(len(X))
@@ -359,7 +369,6 @@ def multilineEnvelope(M, C, V_T, CohGrid):
 
 
     """
-    print("Do multilineEnvelope step")
     m_len = len(CohGrid)
     rise, fall = rise_and_fall(M, V_T)
 
@@ -367,9 +376,6 @@ def multilineEnvelope(M, C, V_T, CohGrid):
     fall = numpy.append(fall, len(M)-1)
     # The number of kinks are the number of time the grid falls
     num_kinks = len(fall)
-    print(num_kinks)
-    print(rise)
-    print(fall)
     # Use these segments to sequentially find upper envelopes
     mV_T = numpy.empty((m_len, num_kinks))
     mV_T[:] = numpy.nan
@@ -408,11 +414,6 @@ def multilineEnvelope(M, C, V_T, CohGrid):
     # Extrapolate if NaNs are introduced due to the common grid
     # going outside all the sub-line segments
     IsNaN = numpy.isnan(upperV_T)
-    print(IsNaN[1:].all())
-    print(IsNaN.any())
-    print(upperM[IsNaN == False].shape)
-    print(upperV_T[IsNaN == False].shape)
-    print(upperM[IsNaN].shape)
     upperV_T[IsNaN] = LinearInterp(upperM[IsNaN == False], upperV_T[IsNaN == False], lower_extrap=True)(upperM[IsNaN])
     LastBeforeNaN = numpy.append(numpy.diff(IsNaN)>0, 0)
     LastId = LastBeforeNaN*idx_max # Find last id-number

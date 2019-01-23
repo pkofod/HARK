@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: 493edb500e834cfab9155cc952e200e4
-#     lastKernelId: 24e0f69d-c4cd-48b7-811b-0d0807abe02a
+#     lastCommId: 31eca40f82114de68bfb3c6d0f542f77
+#     lastKernelId: e127a39a-6a50-4a9f-abbc-88e25c5de934
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -22,7 +22,7 @@
 #     name: python
 #     nbconvert_exporter: python
 #     pygments_lexer: ipython3
-#     version: 3.6.4
+#     version: 3.6.5
 # ---
 
 # # Liquid and illiquid savings
@@ -45,6 +45,45 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 
 
+# -
+
+illsaver.solution[0][1].shape
+
+illsaver.solution[0][5](illsaver.grids.m)
+
+illsaver.grids.m+0.1-illsaver.utility.adjcost
+
+plt.plot(illsaver.grids.m, illsaver.solution[0][5](illsaver.grids.m+5.01-illsaver.utility.adjcost)-5.01)
+
+plt.plot(illsaver.solution[0][0].ravel(), illsaver.solution[0][1].ravel())
+
+illsaver.solution[0]
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[200:500,200:500]
+Y = illsaver.grids.N[200:500,200:500]
+Z = illsaver.solution[0][5](X+Y-illsaver.utility.adjcost)-Y
+ax.plot_surface(X, Y, Z)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(30, -135)
+
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+
+ax.plot_surface(illsaver.solution[0][0][200:,200:], illsaver.grids.N[200:,200:], numpy.divide(-1.0, illsaver.solution[0][3][200:,200:]))
+
+# rotate the axes and update
+ax.view_init(30, -90)
+
 
 # +
 fig = plt.figure()
@@ -52,7 +91,7 @@ ax = plt.axes(projection='3d')
 
 
 X, Y = numpy.meshgrid(illsaver.grids.m[40:], illsaver.grids.n[40:])
-f = illsaver.solution_terminal.V_TFunc
+f = illsaver.solution[0][5].V_TFunc
 Z = numpy.divide(-1,f(X, Y))
 
 ax.plot_surface(X, Y, Z)
