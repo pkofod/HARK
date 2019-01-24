@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: c37727c7c0574aa584226d7049ae493e
-#     lastKernelId: 75fc942d-cfc6-4054-aad4-5c9a5cd0c379
+#     lastCommId: c429af11def541468ab1929d72e8e9d6
+#     lastKernelId: 79706546-268b-4aa7-a766-c4a53988de82
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -22,7 +22,7 @@
 #     name: python
 #     nbconvert_exporter: python
 #     pygments_lexer: ipython3
-#     version: 3.6.4
+#     version: 3.6.5
 # ---
 
 # # Liquid and illiquid savings
@@ -30,7 +30,7 @@
 # +
 import sys, os
 
-sys.path.insert(0, "/home/pkofod/HARK/HARK")
+sys.path.insert(0, "/home/pkofod/HARK/")
 # -
 
 from illiquid import IlliquidSaver
@@ -40,6 +40,10 @@ illsaver = IlliquidSaver()
 illsaver.updateLast()
 
 illsaver.solution_terminal.V_T
+
+import HARK.interpolation as itp
+
+help(itp.BilinearInterp)
 
 illsaver.solve()
 
@@ -70,15 +74,15 @@ plt.plot(illsaver.grids.m, illsaver.solution[0].BFunc(illsaver.grids.m, 3.0)-3.0
 
 plt.plot(illsaver.solution[0][0].ravel(), illsaver.solution[0][1].ravel())
 
-illsaver.solution[0]
+illsaver.solution[0].P[0]
 
 # +
 fig = plt.figure()
 ax = plt.axes(projection='3d')
 
-X = illsaver.grids.M[100:,100:]
-Y = illsaver.grids.N[100:,100:]
-Z = Y-illsaver.solution[3].BFunc(X,Y)
+X = illsaver.grids.M[0:,0:]
+Y = illsaver.grids.N[0:,0:]
+Z = Y-illsaver.solution[0].BFunc(X,Y)
 Z1 = Z.copy()
 Z2 = Z.copy()
 Z1[Z<0.0] = numpy.nan
@@ -89,15 +93,52 @@ ax.set_xlabel("m")
 ax.set_ylabel("n")
 
 # rotate the axes and update
-ax.view_init(85, -135)
+ax.view_init(45, -175)
+# -
+
+plt.plot(illsaver.solution[1].V_T[0])
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[450:1700,450:1700]
+Y = illsaver.grids.N[450:1700,450:1700]
+Z = illsaver.solution[2].V_TFunc(X,Y)
+Z1 = numpy.divide(-1.0, Z.copy())
+ax.plot_surface(X, Y, Z)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(20, 175)
 
 
 # +
 fig = plt.figure()
 ax = plt.axes(projection='3d')
 
-X = illsaver.grids.M[100:,100:]
-Y = illsaver.grids.N[100:,100:]
+X = illsaver.grids.M[0:,0:]
+Y = illsaver.grids.N[0:,0:]
+Z = illsaver.solution[-1].CFunc(X,Y)
+Z1 = Z.copy()
+ax.plot_surface(X, Y, Z1)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(45, -135)
+
+# -
+
+illsaver.solution[0].P
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[0:,100:]
+Y = illsaver.grids.N[0:,100:]
 Z = illsaver.solution[2].V_TFunc(X,Y)
 Z1 = Z.copy()
 ax.plot_surface(X, Y, Z1)

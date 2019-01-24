@@ -19,26 +19,27 @@ Utility = namedtuple('Utility', 'u inv P P_inv adjcost')
 
 class IlliquidSaverSolution(Solution):
     distance_criteria = ['V']
-    def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc):
+    def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc, P):
         self.C = C
         self.CFunc = CFunc
         self.B = B
         self.BFunc = BFunc
         self.V_T = V_T
         self.V_TFunc = V_TFunc
+        self.P = P
         self.V = numpy.divide(-1.0, V_T)
         print(self.V)
 
 class IlliquidSaver(AgentType):
-    def __init__(self, DiscFac=0.98, Rliq=1.02, Rilliq=1.04,
+    def __init__(self, DiscFac=0.95, Rliq=1.02, Rilliq=1.04,
                  CRRA=1.0, sigma=0.0,
                  TranIncVar = 0.085,
                  TranIncNodes = 6,
                  PermIncVar = 0.073,
                  PermIncNodes = 0,
-                 ALims=(1e-6, 8), ANodes=1800,
+                 ALims=(1e-6, 10), ANodes=1800,
                  MLims=(1e-6, 15), MNodes=2000,
-                 BLims=(1e-6, 8), BNodes=2000,
+                 BLims=(1e-6, 10), BNodes=2000,
                  NLims=(1e-6, 15), NNodes=2000,
                  XLims=(1e-6, 10), XNodes=2000,
                  adjcost=0.2,
@@ -55,7 +56,7 @@ class IlliquidSaver(AgentType):
 
         self.PermIncVar = PermIncVar
         self.PermIncNodes = PermIncNodes
-        self.age = range(4)
+        self.age = range(15)
         # Argument control
         self.time_inv = ['utility', 'grids', 'shocks', 'par']
         self.time_vary = ['age']
@@ -125,7 +126,7 @@ class IlliquidSaver(AgentType):
         V_T = numpy.divide(-1.0, self.utility.u(C))
         V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
-        self.solution_terminal = IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+        self.solution_terminal = IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc, 0)
 
 
 def calcIncShks(self):
@@ -158,16 +159,32 @@ def solveIlliquidSaver(solution_next, utility, grids, shocks, par, age):
     W = calcW(solution_next, grids, shocks, par)
 
     Coh_ab, CNon, CNonFunc, VNon_T, V_TNonFunc = solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par)
-    BFunc = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
+    print("Printing VNon_T")
+    print(VNon_T)
 
     BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
 
-    BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
-    CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
-    V_TAdjust = V_TAdjustX(grids.M+grids.N-par.adjcost)
+    BAdjust = BAdjustX(grids.M+grids.N*(1-par.adjcost))
+    CAdjust = CAdjustX(grids.M+grids.N*(1-par.adjcost))
+    BigX = grids.M+grids.N*(1-par.adjcost)
+    V_TAdjust = V_TAdjustX(BigX)
+    V_TAdjust[numpy.isnan(V_TAdjust)] = 0
+    print("Printing V_TAdjust at 0.0")
+    print(V_TAdjustX(0.0))
 
-    # Without a shock we can safely do this on the transformed, but what if sigma > 0? We transform for safety
+    print(numpy.isnan(V_TAdjust).any())
+    print(V_TAdjust)
+    print("Choice specific")
+    print(VNon_T[0:5, 0:5])
+    print(V_TAdjust[0:5, 0:5])
+    print(numpy.divide(-1.0, VNon_T[0:5, 0:5]))
+    print(numpy.divide(-1.0, V_TAdjust[0:5, 0:5]))
+    # Without a shock we can safely do this on the transformed, but what if sigma > 0?
     V, P = calcLogSumChoiceProbs(numpy.stack((numpy.divide(-1.0, VNon_T), numpy.divide(-1.0, V_TAdjust))), par.sigma)
+    print("Enveloped")
+    print(V[0:5, 0:5])
+    print(P[0][0:5, 0:5])
+    print(P[1][0:5, 0:5])
 
     B = P[0]*grids.M*0 + P[1]*BAdjust
     BFunc = BilinearInterp(B, grids.m, grids.n)
@@ -179,7 +196,7 @@ def solveIlliquidSaver(solution_next, utility, grids, shocks, par, age):
     V_T = numpy.divide(-1.0, V)
     V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
-    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc, P)
 
 
 def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
@@ -241,7 +258,7 @@ def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
 
 def solveIlliquidSaverAdjustment(solution_next, Cstar, W, utility, grids, shocks, par):
 
-    X = grids.m
+    X = numpy.insert(grids.m,0,0)
     possibleAdj = numpy.arange(0, 0.99, 100)
 
     Cadjust = numpy.zeros(len(X))
@@ -272,6 +289,12 @@ def solveIlliquidSaverAdjustment(solution_next, Cstar, W, utility, grids, shocks
         Badjust[xIdx] = cCandidates[optimizerIdx]
         Vadjust[xIdx] = vCandidates[optimizerIdx]
         xIdx += 1
+    print("In adjuster")
+    print(numpy.isnan(Cadjust).any())
+    print(numpy.isnan(Badjust).any())
+    print(numpy.isnan(Vadjust).any())
+    print("Are there nans in the inverse?")
+    print(numpy.isnan(numpy.divide(-1.0, Vadjust)).any())
 
     BFunc = LinearInterp(X, Badjust)
     CFunc = LinearInterp(X, Cadjust)
