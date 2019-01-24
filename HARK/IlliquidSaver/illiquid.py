@@ -4,7 +4,7 @@ import numpy
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from HARK import Solution, AgentType
-from HARK.interpolation import LinearInterp, BilinearInterp
+from HARK.interpolation import LinearInterp, BilinearInterp, calcLogSumChoiceProbs
 from HARK.utilities import CRRAutility, CRRAutility_inv, CRRAutilityP, CRRAutilityP_inv, makeGridExpMult
 from HARK.simulation import drawMeanOneLognormal
 from math import sqrt
@@ -13,14 +13,12 @@ from math import sqrt
 Grids = namedtuple('Grids', 'm n M N a b A B EGMVector')
 IlliquidParams = namedtuple('IlliquidParams', 'Rliq Rilliq DiscFac CRRA sigma adjcost')
 
-IlliquidSaverParameters = namedtuple('IlliquidSaverParameters',
-                                     'DiscFac CRRA Rliq Rilliq sigma')
-
 Shocks = namedtuple('Shocks', 'PermInc TranInc TranIncWeights Weights')
 
 Utility = namedtuple('Utility', 'u inv P P_inv adjcost')
 
 class IlliquidSaverSolution(Solution):
+    distance_criteria = ['V']
     def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc):
         self.C = C
         self.CFunc = CFunc
@@ -28,6 +26,8 @@ class IlliquidSaverSolution(Solution):
         self.BFunc = BFunc
         self.V_T = V_T
         self.V_TFunc = V_TFunc
+        self.V = numpy.divide(-1.0, V_T)
+        print(self.V)
 
 class IlliquidSaver(AgentType):
     def __init__(self, DiscFac=0.98, Rliq=1.02, Rilliq=1.04,
@@ -36,39 +36,42 @@ class IlliquidSaver(AgentType):
                  TranIncNodes = 6,
                  PermIncVar = 0.073,
                  PermIncNodes = 0,
-                 ALims=(1e-6, 8), ANodes=900,
-                 MLims=(1e-6, 15), MNodes=1000,
-                 BLims=(1e-6, 8), BNodes=1000,
-                 NLims=(1e-6, 15), NNodes=1000,
-                 XLims=(1e-6, 10), XNodes=1000,
-                 adjcost=0.02,
+                 ALims=(1e-6, 8), ANodes=1800,
+                 MLims=(1e-6, 15), MNodes=2000,
+                 BLims=(1e-6, 8), BNodes=2000,
+                 NLims=(1e-6, 15), NNodes=2000,
+                 XLims=(1e-6, 10), XNodes=2000,
+                 adjcost=0.2,
                  saveCommon=False,
+                 cycles=0,
                  **kwds):
 
         AgentType.__init__(self, **kwds)
         self.saveCommon = saveCommon
 
+        # Income shocks
         self.TranIncVar = TranIncVar
         self.TranIncNodes = TranIncNodes
 
         self.PermIncVar = PermIncVar
         self.PermIncNodes = PermIncNodes
-        self.adjcost = adjcost
+        self.age = range(4)
+        # Argument control
+        self.time_inv = ['utility', 'grids', 'shocks', 'par']
+        self.time_vary = ['age']
+
+        # Parameters
         self.par = IlliquidParams(Rliq, Rilliq, DiscFac, CRRA, sigma, adjcost)
 
-        self.time_inv = ['utility', 'grids', 'shocks', 'par']
-        self.time_vary = []
+        # States
+        self.MLims, self.NLims = MLims, NLims
+        self.MNodes, self.NNodes = MNodes, NNodes
 
-        self.par = IlliquidSaverParameters(DiscFac, CRRA, Rliq, Rilliq, sigma)
-        self.MNodes = MNodes
-        self.ANodes = ANodes
-        self.BNodes = BNodes
-        self.NNodes = NNodes
-        self.MLims = MLims
-        self.ALims = ALims
-        self.BLims = BLims
-        self.NLims = NLims
+        # Post decision states
+        self.ALims, self.BLims = ALims, BLims
+        self.ANodes, self.BNodes = ANodes, BNodes
 
+        # Solve methods
         self.preSolve = self.updateLast
         self.solveOnePeriod = solveIlliquidSaver
 
@@ -105,13 +108,13 @@ class IlliquidSaver(AgentType):
                                lambda u: CRRAutility_inv(u, self.par.CRRA),
                                lambda c: CRRAutilityP(c, self.par.CRRA),
                                lambda u: CRRAutilityP_inv(u, self.par.CRRA),
-                               self.adjcost)
+                               self.par.adjcost)
 
         self.shocks = calcIncShks(self)
 
         # ### solve last illiquid saver
         # ### solve last adjuster, transfer everything
-        C = grids.M + (1-self.adjcost)*grids.N
+        C = grids.M + (1-self.par.adjcost)*grids.N
         CFunc = BilinearInterp(C, grids.m, grids.n)
 
         # Remember, B is the function that tells you the CHOICE of B given (m,n),
@@ -150,31 +153,33 @@ def calcIncShks(self):
     return Shocks(self.PermInc, self.TranInc, self.TranIncWeights, self.PermIncWeights*self.TranIncWeights)
 
 
-def solveIlliquidSaver(solution_next, utility, grids, shocks, par):
-
+def solveIlliquidSaver(solution_next, utility, grids, shocks, par, age):
+    print("herehere")
     W = calcW(solution_next, grids, shocks, par)
 
     Coh_ab, CNon, CNonFunc, VNon_T, V_TNonFunc = solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par)
     BFunc = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
-    return (Coh_ab, CNon, CNonFunc, VNon_T, V_TNonFunc, BFunc)
-    # BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
-    #
-    # BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
-    # CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
-    #
-    # V, P = calcLogSumChoiceProbs((V_TNonFunc, V_TAdjustX), par.sigma)
-    #
-    # B = P[0]*grids.M*0 + P[1]*BAdjust
-    # BFunc = BilinearInterp(B, grids.m, grids.n)
-    #
-    # C = P[0]*CNon + P[1]*CAdjustX
-    # CFunc = BilinearInterp(C, grids.m, grids.n)
-    #
-    #
-    # V_T = numpy.divide(-1.0, V)
-    # V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
-    #
-    # return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
+
+    BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
+
+    BAdjust = BAdjustX(grids.M+grids.N-par.adjcost)
+    CAdjust = CAdjustX(grids.M+grids.N-par.adjcost)
+    V_TAdjust = V_TAdjustX(grids.M+grids.N-par.adjcost)
+
+    # Without a shock we can safely do this on the transformed, but what if sigma > 0? We transform for safety
+    V, P = calcLogSumChoiceProbs(numpy.stack((numpy.divide(-1.0, VNon_T), numpy.divide(-1.0, V_TAdjust))), par.sigma)
+
+    B = P[0]*grids.M*0 + P[1]*BAdjust
+    BFunc = BilinearInterp(B, grids.m, grids.n)
+
+    C = P[0]*CNon + P[1]*CAdjust
+    CFunc = BilinearInterp(C, grids.m, grids.n)
+
+
+    V_T = numpy.divide(-1.0, V)
+    V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
+
+    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc)
 
 
 def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):
@@ -270,10 +275,9 @@ def solveIlliquidSaverAdjustment(solution_next, Cstar, W, utility, grids, shocks
 
     BFunc = LinearInterp(X, Badjust)
     CFunc = LinearInterp(X, Cadjust)
-    CFunc = LinearInterp(X, Cadjust)
-    VFunc = LinearInterp(X, Vadjust)
+    V_TFunc = LinearInterp(X, numpy.divide(-1.0, Vadjust))
 
-    return BFunc
+    return BFunc, CFunc, V_TFunc
 
 def calcW(solution_next, grids, shocks, par):
     W = grids.M*0

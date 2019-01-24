@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: 31eca40f82114de68bfb3c6d0f542f77
-#     lastKernelId: e127a39a-6a50-4a9f-abbc-88e25c5de934
+#     lastCommId: c37727c7c0574aa584226d7049ae493e
+#     lastKernelId: 75fc942d-cfc6-4054-aad4-5c9a5cd0c379
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -22,10 +22,16 @@
 #     name: python
 #     nbconvert_exporter: python
 #     pygments_lexer: ipython3
-#     version: 3.6.5
+#     version: 3.6.4
 # ---
 
 # # Liquid and illiquid savings
+
+# +
+import sys, os
+
+sys.path.insert(0, "/home/pkofod/HARK/HARK")
+# -
 
 from illiquid import IlliquidSaver
 
@@ -37,6 +43,13 @@ illsaver.solution_terminal.V_T
 
 illsaver.solve()
 
+import numpy
+A=numpy.zeros((3,6))+1
+B=numpy.zeros((3,6))+2
+from HARK.interpolation import calcLogSumChoiceProbs
+
+calcLogSumChoiceProbs(numpy.stack((A, B)),0.0)
+
 # +
 import numpy
 import matplotlib.pyplot as plt
@@ -47,13 +60,13 @@ from mpl_toolkits import mplot3d
 
 # -
 
-illsaver.solution[0][1].shape
+illsaver.solution[0].C.shape
 
-illsaver.solution[0][5](illsaver.grids.m)
+plt.plot(illsaver.grids.m,illsaver.solution[0].BFunc(illsaver.grids.m, 1))
 
 illsaver.grids.m+0.1-illsaver.utility.adjcost
 
-plt.plot(illsaver.grids.m, illsaver.solution[0][5](illsaver.grids.m+5.01-illsaver.utility.adjcost)-5.01)
+plt.plot(illsaver.grids.m, illsaver.solution[0].BFunc(illsaver.grids.m, 3.0)-3.0)
 
 plt.plot(illsaver.solution[0][0].ravel(), illsaver.solution[0][1].ravel())
 
@@ -63,15 +76,62 @@ illsaver.solution[0]
 fig = plt.figure()
 ax = plt.axes(projection='3d')
 
-X = illsaver.grids.M[200:500,200:500]
-Y = illsaver.grids.N[200:500,200:500]
-Z = illsaver.solution[0][5](X+Y-illsaver.utility.adjcost)-Y
-ax.plot_surface(X, Y, Z)
+X = illsaver.grids.M[100:,100:]
+Y = illsaver.grids.N[100:,100:]
+Z = Y-illsaver.solution[3].BFunc(X,Y)
+Z1 = Z.copy()
+Z2 = Z.copy()
+Z1[Z<0.0] = numpy.nan
+Z2[Z>=0.0] = numpy.nan
+ax.plot_surface(X, Y, Z1)
+ax.plot_surface(X, Y, Z2)
 ax.set_xlabel("m")
 ax.set_ylabel("n")
 
 # rotate the axes and update
-ax.view_init(30, -135)
+ax.view_init(85, -135)
+
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[100:,100:]
+Y = illsaver.grids.N[100:,100:]
+Z = illsaver.solution[2].V_TFunc(X,Y)
+Z1 = Z.copy()
+ax.plot_surface(X, Y, Z1)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(45, -40)
+
+# -
+
+numpy.isnan(Z3).any()
+
+Z
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[100:,100:]
+Y = illsaver.grids.N[100:,100:]
+Z = illsaver.solution[1].BFunc(X,Y)-Y
+Z1 = Z.copy()
+Z2 = Z.copy()
+Z1[Z<-0.04] = numpy.nan
+Z2[Z>0.04] = numpy.nan
+
+ax.plot_surface(X, Y, Z2)
+ax.plot_surface(X, Y, Z1)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(90, 95)
 
 
 # +
