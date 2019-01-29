@@ -19,9 +19,10 @@ Utility = namedtuple('Utility', 'u inv P P_inv adjcost')
 
 class IlliquidSaverSolution(Solution):
     distance_criteria = ['V']
-    def __init__(self, C, CFunc, B, BFunc, V_T, V_TFunc, P):
+    def __init__(self, C, CFunc, CcFunc, B, BFunc, V_T, V_TFunc, P):
         self.C = C
         self.CFunc = CFunc
+        self.CcFunc = CcFunc
         self.B = B
         self.BFunc = BFunc
         self.V_T = V_T
@@ -31,7 +32,7 @@ class IlliquidSaverSolution(Solution):
         print(self.V)
 
 class IlliquidSaver(AgentType):
-    def __init__(self, DiscFac=0.95, Rliq=1.02, Rilliq=1.04,
+    def __init__(self, DiscFac=0.95, Rliq=1.02, Rilliq=1.02,
                  CRRA=1.0, sigma=0.0,
                  TranIncVar = 0.085,
                  TranIncNodes = 6,
@@ -42,7 +43,7 @@ class IlliquidSaver(AgentType):
                  BLims=(1e-6, 10), BNodes=2000,
                  NLims=(1e-6, 15), NNodes=2000,
                  XLims=(1e-6, 10), XNodes=2000,
-                 adjcost=0.2,
+                 adjcost=0.0,
                  saveCommon=False,
                  cycles=0,
                  **kwds):
@@ -56,7 +57,7 @@ class IlliquidSaver(AgentType):
 
         self.PermIncVar = PermIncVar
         self.PermIncNodes = PermIncNodes
-        self.age = range(15)
+        self.age = range(2)
         # Argument control
         self.time_inv = ['utility', 'grids', 'shocks', 'par']
         self.time_vary = ['age']
@@ -115,7 +116,7 @@ class IlliquidSaver(AgentType):
 
         # ### solve last illiquid saver
         # ### solve last adjuster, transfer everything
-        C = grids.M + (1-self.par.adjcost)*grids.N
+        C = grids.M + numpy.max(grids.N-self.par.adjcost, 0)
         CFunc = BilinearInterp(C, grids.m, grids.n)
 
         # Remember, B is the function that tells you the CHOICE of B given (m,n),
@@ -126,7 +127,7 @@ class IlliquidSaver(AgentType):
         V_T = numpy.divide(-1.0, self.utility.u(C))
         V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
-        self.solution_terminal = IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc, 0)
+        self.solution_terminal = IlliquidSaverSolution(C, CFunc, (CFunc), B, BFunc, V_T, V_TFunc, 0)
 
 
 def calcIncShks(self):
@@ -164,39 +165,27 @@ def solveIlliquidSaver(solution_next, utility, grids, shocks, par, age):
 
     BAdjustX, CAdjustX, V_TAdjustX = solveIlliquidSaverAdjustment(solution_next, CNonFunc, W, utility, grids, shocks, par)
 
-    BAdjust = BAdjustX(grids.M+grids.N*(1-par.adjcost))
-    CAdjust = CAdjustX(grids.M+grids.N*(1-par.adjcost))
-    BigX = grids.M+grids.N*(1-par.adjcost)
+    BigX = grids.M + grids.N - par.adjcost
+    BAdjust = BAdjustX(BigX)
+    CAdjust = CAdjustX(BigX)
     V_TAdjust = V_TAdjustX(BigX)
     V_TAdjust[numpy.isnan(V_TAdjust)] = 0
     print("Printing V_TAdjust at 0.0")
     print(V_TAdjustX(0.0))
 
-    print(numpy.isnan(V_TAdjust).any())
-    print(V_TAdjust)
-    print("Choice specific")
-    print(VNon_T[0:5, 0:5])
-    print(V_TAdjust[0:5, 0:5])
-    print(numpy.divide(-1.0, VNon_T[0:5, 0:5]))
-    print(numpy.divide(-1.0, V_TAdjust[0:5, 0:5]))
     # Without a shock we can safely do this on the transformed, but what if sigma > 0?
-    V, P = calcLogSumChoiceProbs(numpy.stack((numpy.divide(-1.0, VNon_T), numpy.divide(-1.0, V_TAdjust))), par.sigma)
-    print("Enveloped")
-    print(V[0:5, 0:5])
-    print(P[0][0:5, 0:5])
-    print(P[1][0:5, 0:5])
+    V, P = calcLogSumChoiceProbs(numpy.stack((numpy.divide(-1.0, V_TNonFunc(grids.M, grids.N)), numpy.divide(-1.0, V_TAdjust))), par.sigma)
 
-    B = P[0]*grids.M*0 + P[1]*BAdjust
+    B = P[0]*grids.N + P[1]*BAdjust
     BFunc = BilinearInterp(B, grids.m, grids.n)
 
     C = P[0]*CNon + P[1]*CAdjust
     CFunc = BilinearInterp(C, grids.m, grids.n)
 
-
     V_T = numpy.divide(-1.0, V)
     V_TFunc = BilinearInterp(V_T, grids.m, grids.n)
 
-    return IlliquidSaverSolution(C, CFunc, B, BFunc, V_T, V_TFunc, P)
+    return IlliquidSaverSolution(C, CFunc, (CNonFunc, CAdjustX), B, BFunc, V_T, V_TFunc, P)
 
 
 def solveIlliquidSaverConsumption(solution_next, utility, grids, shocks, par):

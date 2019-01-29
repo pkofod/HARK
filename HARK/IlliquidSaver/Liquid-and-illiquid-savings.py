@@ -1,8 +1,8 @@
 # ---
 # jupyter:
 #   '@webio':
-#     lastCommId: c429af11def541468ab1929d72e8e9d6
-#     lastKernelId: 79706546-268b-4aa7-a766-c4a53988de82
+#     lastCommId: 7ad385906fb447998fad4fc9a62288c6
+#     lastKernelId: 75cd853a-7dea-4584-837c-fd92ae68c422
 #   jupytext:
 #     text_representation:
 #       extension: .py
@@ -80,9 +80,9 @@ illsaver.solution[0].P[0]
 fig = plt.figure()
 ax = plt.axes(projection='3d')
 
-X = illsaver.grids.M[0:,0:]
-Y = illsaver.grids.N[0:,0:]
-Z = Y-illsaver.solution[0].BFunc(X,Y)
+X = illsaver.grids.M[0:800,0:800]
+Y = illsaver.grids.N[0:800,0:800]
+Z = Y-illsaver.solution[-1].BFunc(X,Y)
 Z1 = Z.copy()
 Z2 = Z.copy()
 Z1[Z<0.0] = numpy.nan
@@ -93,7 +93,7 @@ ax.set_xlabel("m")
 ax.set_ylabel("n")
 
 # rotate the axes and update
-ax.view_init(45, -175)
+ax.view_init(70, -135)
 # -
 
 plt.plot(illsaver.solution[1].V_T[0])
@@ -104,22 +104,25 @@ ax = plt.axes(projection='3d')
 
 X = illsaver.grids.M[450:1700,450:1700]
 Y = illsaver.grids.N[450:1700,450:1700]
-Z = illsaver.solution[2].V_TFunc(X,Y)
+Z = illsaver.solution[-1].V_TFunc(X,Y)
 Z1 = numpy.divide(-1.0, Z.copy())
 ax.plot_surface(X, Y, Z)
 ax.set_xlabel("m")
 ax.set_ylabel("n")
 
 # rotate the axes and update
-ax.view_init(20, 175)
+ax.view_init(35, 175)
 
+# -
+
+numpy.max(numpy.ones((3,3)), 0)
 
 # +
 fig = plt.figure()
 ax = plt.axes(projection='3d')
 
-X = illsaver.grids.M[0:,0:]
-Y = illsaver.grids.N[0:,0:]
+X = illsaver.grids.M[0:800,0:800]
+Y = illsaver.grids.N[0:800,0:800]
 Z = illsaver.solution[-1].CFunc(X,Y)
 Z1 = Z.copy()
 ax.plot_surface(X, Y, Z1)
@@ -129,9 +132,38 @@ ax.set_ylabel("n")
 # rotate the axes and update
 ax.view_init(45, -135)
 
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[0:800,0:800]
+Y = illsaver.grids.N[0:800,0:800]
+Z = illsaver.solution[1].CcFunc[0](X,Y)
+Z1 = Z.copy()
+ax.plot_surface(X, Y, Z1)
+ax.set_xlabel("m")
+ax.set_ylabel("n")
+
+# rotate the axes and update
+ax.view_init(10, -135)
+
 # -
 
-illsaver.solution[0].P
+plt.plot(Z[3, :])
+
+# +
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+
+X = illsaver.grids.M[0:800,0:800]
+Y = illsaver.grids.N[0:800,0:800]
+Z = illsaver.solution[-1].P[0][0:800, 0:800]
+
+ax.plot_surface(X, Y, Z)
+# -
+
+illsaver.solution[-1].P[0][0:10, 0:10]
 
 # +
 fig = plt.figure()
