@@ -834,8 +834,7 @@ class ConsIndShockSolverBasic(ConsIndShockSetup):
         EndOfPrdvP : np.array
             A 1D array of end-of-period marginal value of assets
         '''
-        Rbold = self.Rfree
-        EndOfPrdvP  = self.DiscFacEff*Rbold*self.PermGroFac**(-self.CRRA)*np.sum(
+        EndOfPrdvP  = self.DiscFacEff*self.Rfree*self.PermGroFac**(-self.CRRA)*np.sum(
                       self.PermShkVals_temp**(-self.CRRA)*
                       self.vPfuncNext(self.mNrmNext)*self.ShkPrbs_temp,axis=0)
         return EndOfPrdvP
@@ -1314,7 +1313,7 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
 
 
 def solveConsIndShock(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,PermGroFac,
-                                BoroCnstArt,aXtraGrid,vFuncBool,CubicBool,TradesStocks):
+                                BoroCnstArt,aXtraGrid,vFuncBool,CubicBool,PortfolioBool):
     '''
     Solves a single period consumption-saving problem with CRRA utility and risky
     income (subject to permanent and transitory shocks).  Can generate a value
@@ -1369,11 +1368,11 @@ def solveConsIndShock(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,PermGro
         solver = ConsIndShockSolverBasic(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,
                                                   Rfree,PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,
                                                   CubicBool)
-    elif TradesStocks == False: # Use the "advanced" solver if either is requested
+    elif PortfolioBool == False: # Use the "advanced" solver if either is requested
         print("Using advanced/False")
         solver = ConsIndShockSolver(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,
                                              PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,CubicBool)
-    elif TradesStocks == True:
+    elif PortfolioBool == True:
         print("Using advanced/True")
         solver = ConsIndShockPortfolioSolver(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,
                                      PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,CubicBool)
@@ -1895,7 +1894,7 @@ class IndShockConsumerType(PerfForesightConsumerType):
     for risk aversion, discount factor, the interest rate, the grid of end-of-
     period assets, and an artificial borrowing constraint.
     '''
-    time_inv_ = PerfForesightConsumerType.time_inv_ + ['BoroCnstArt','vFuncBool','CubicBool','TradesStocks']
+    time_inv_ = PerfForesightConsumerType.time_inv_ + ['BoroCnstArt','vFuncBool','CubicBool','PortfolioBool']
     shock_vars_ = ['PermShkNow','TranShkNow']
 
     def __init__(self,cycles=1,time_flow=True,verbose=False,quiet=False,**kwds):
@@ -1919,7 +1918,7 @@ class IndShockConsumerType(PerfForesightConsumerType):
         PerfForesightConsumerType.__init__(self,cycles=cycles,time_flow=time_flow,
                                            verbose=verbose,quiet=quiet, **kwds)
 
-        if self.TradesStocks:
+        if self.PortfolioBool:
             self.vFuncBool = True
 
         # Add consumer-type specific objects, copying to create independent versions

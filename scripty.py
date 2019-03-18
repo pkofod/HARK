@@ -31,7 +31,7 @@ init_perfect_foresight = { 'CRRA': CRRA,
                           }
 
 
-RiskPremium = 0.1
+RiskyPremium = 0.1
 # Parameters for constructing the "assets above minimum" grid
 aXtraMin = 0.001                    # Minimum end-of-period "assets above minimum" value
 aXtraMax = 20                       # Maximum end-of-period "assets above minimum" value
@@ -88,8 +88,8 @@ init_idiosyncratic_shocks = { 'CRRA': CRRA,
                               'PermGroFacAgg' : PermGroFacAgg,
                               'T_age' : T_age,
                               'T_cycle' : T_cycle,
-                              'RiskPremium' : RiskPremium,
-                              'TradesStocks' : True,
+                              'RiskyPremium' : RiskyPremium,
+                              'PortfolioBool' : True,
 }
 
 init_lifecycle = copy(init_idiosyncratic_shocks)
