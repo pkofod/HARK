@@ -1195,23 +1195,23 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
     # As a time line, the model is ordered as:
     #
     # ----------------------------- 1 time period ------------------------------
-    # t start -> chose best c -> find best investment strategy for a_t -> t stop
+    # t start -> choose c -> find best investment strategy for aCurr -> t stop
     #
-    # But just as the whole modeled is solved recursively, a time period is also
+    # Just as the whole model is solved recursively, a time period is also
     # solved recursively over the two sub-periods.
     #
-    # First, we fix a in the A grid. Second, we maximize, given a, the expected
+    # First, we fix a in the "a" grid. Second, we maximize, given a, the expected
     # utility as a function of the stock share. Third, we construct an interpolant
-    # that is defined on A, such that the we can calculate the endogenous grid
+    # that is defined on a, such that the we can calculate the endogenous grid
     # and consumption by inverting the Euler equation given the value of contin-
-    # uing into the Portfolio sub-section.
+    # uing into the Portfolio sub-period.
 
-    def updateRpremium(self):
-        self.Rpremium = self.IncomeDstn[3] - self.Rfree
+    def updateRiskyPremium(self):
+        self.RiskyPremium = self.IncomeDstn[3] - self.Rfree
 
     def Rbold(self, StockShare):
-        self.updateRpremium() # this is not optimal, but let's do it everywhere for now
-        return self.Rfree + self.Rpremium*StockShare
+        self.updateRiskyPremium() # this is not optimal, but let's do it everywhere for now
+        return self.Rfree + self.RiskyPremium*StockShare
 
     def PortfolioObjective(self, StockShare):
         # The portfolio objective is the expected value of interering tomorrow
@@ -1223,13 +1223,16 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
         return -np.sum(VLvlNext*self.IncomeDstn[0],axis=0)
 
     def vOptFuncNextFromPortfolioSubproblem(self):
-        shareOpt = np.array([])
+        riskyShare = np.array([])
         vOpt = np.array([])
         vOptPa = np.array([])
         for a in self.aNrmNow:
+            # set aPortfolio for use in PortfolioObjective
             self.aPortfolio = a
+
+            # Set the ratio between 0 and 1
             optRes = minimize_scalar(self.PortfolioObjective, bounds=(0, 1), method='bounded')
-            shareOpt = np.append(shareOpt, optRes.x)
+            riskyShare = np.append(riskyShare, optRes.x)
             vOpt = np.append(vOpt, -self.PortfolioObjective(optRes.x))
             mNrmOpt = self.mNrmNextAta(optRes.x)
 
@@ -1241,7 +1244,7 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
             vPNext*self.IncomeDstn[0])
             vOptPa = np.append(vOptPa, np.sum(vOptPa_single))
             # grab best policy and value and append it
-        self.shareOptFunc = LinearInterp(self.aNrmNow, shareOpt)
+        self.riskyShareFunc = LinearInterp(self.aNrmNow, riskyShare)
 
         vOptNvrs  = self.uinv(vOpt) # value transformed through inverse utility
         vOptNvrs  = np.insert(vOptNvrs,0,0.0)
@@ -1251,7 +1254,7 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
 
         self.vOptPaFuncNext = LinearInterp(self.aNrmNow, vOptPa)
 
-        return self.vOptFuncNext, self.shareOptFunc
+        return self.vOptFuncNext, self.riskyShareFunc
 
     def mNrmNextAta(self, StockShare):
         # Get cash on hand next period
@@ -1302,36 +1305,13 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
         '''
 
         # Solve portfolio problem in a stage of its own.
-        self.vOptFunc, self.shareOptFunc = self.vOptFuncNextFromPortfolioSubproblem()
+        self.vOptFunc, self.riskyShareFunc = self.vOptFuncNextFromPortfolioSubproblem()
 
         # use them to construct a vPNext
         EndOfPrdvP  = self.vOptPaFuncNext(self.aNrmNow)
 
         return EndOfPrdvP
 
-
-    def addvFunc(self,solution,EndOfPrdvP):
-        '''
-        Creates the value function for this period and adds it to the solution.
-
-        Parameters
-        ----------
-        solution : ConsumerSolution
-            The solution to this single period problem, likely including the
-            consumption function, marginal value function, etc.
-        EndOfPrdvP : np.array
-            Array of end-of-period marginal value of assets corresponding to the
-            asset values in self.aNrmNow.
-
-        Returns
-        -------
-        solution : ConsumerSolution
-            The single period solution passed as an input, but now with the
-            value function (defined over market resources m) as an attribute.
-        '''
-        self.makeEndOfPrdvFunc(EndOfPrdvP)
-        solution.vFunc = self.makevFunc(solution)
-        return solution
 
 def solveConsIndShock(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,PermGroFac,
                                 BoroCnstArt,aXtraGrid,vFuncBool,CubicBool,TradesStocks):
