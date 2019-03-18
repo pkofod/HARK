@@ -686,7 +686,7 @@ class ConsIndShockSetup(ConsPerfForesightSolver):
         self.ShkPrbsNext      = IncomeDstn[0]
         self.PermShkValsNext  = IncomeDstn[1]
         self.TranShkValsNext  = IncomeDstn[2]
-        self.RriskShkValsNext  = IncomeDstn[3]
+        self.RiskyShkValsNext  = IncomeDstn[3]
         self.PermShkMinNext   = np.min(self.PermShkValsNext)
         self.TranShkMinNext   = np.min(self.TranShkValsNext)
         self.vPfuncNext       = solution_next.vPfunc
@@ -802,7 +802,7 @@ class ConsIndShockSolverBasic(ConsIndShockSetup):
         aNrmCount         = aNrmNow.shape[0]
         PermShkVals_temp  = (np.tile(self.PermShkValsNext,(aNrmCount,1))).transpose()
         TranShkVals_temp  = (np.tile(self.TranShkValsNext,(aNrmCount,1))).transpose()
-        RriskShkVals_temp  = (np.tile(self.RriskShkValsNext,(aNrmCount,1))).transpose()
+        RiskyShkVals_temp  = (np.tile(self.RiskyShkValsNext,(aNrmCount,1))).transpose()
         ShkPrbs_temp      = (np.tile(self.ShkPrbsNext,(aNrmCount,1))).transpose()
 
         # Get cash on hand next period
@@ -812,7 +812,7 @@ class ConsIndShockSolverBasic(ConsIndShockSetup):
         # Store and report the results
         self.PermShkVals_temp  = PermShkVals_temp
         self.TranShkVals_temp  = TranShkVals_temp
-        self.RriskShkVals_temp = RriskShkVals_temp
+        self.RiskyShkVals_temp = RiskyShkVals_temp
         self.ShkPrbs_temp      = ShkPrbs_temp
         self.mNrmNext          = mNrmNext
         self.aNrmNow           = aNrmNow
@@ -1242,9 +1242,6 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
             vOptPa = np.append(vOptPa, np.sum(vOptPa_single))
             # grab best policy and value and append it
         self.shareOptFunc = LinearInterp(self.aNrmNow, shareOpt)
-
-
-
 
         vOptNvrs  = self.uinv(vOpt) # value transformed through inverse utility
         vOptNvrs  = np.insert(vOptNvrs,0,0.0)
@@ -1969,11 +1966,11 @@ class IndShockConsumerType(PerfForesightConsumerType):
         '''
         original_time = self.time_flow
         self.timeFwd()
-        IncomeDstn, PermShkDstn, TranShkDstn, RriskDstn = constructLognormalIncomeProcessUnemployment(self)
+        IncomeDstn, PermShkDstn, TranShkDstn, RiskyDstn = constructLognormalIncomeProcessUnemployment(self)
         self.IncomeDstn = IncomeDstn
         self.PermShkDstn = PermShkDstn
         self.TranShkDstn = TranShkDstn
-        self.RriskDstn = RriskDstn
+        self.RiskyDstn = RiskyDstn
 
         self.addToTimeVary('IncomeDstn','PermShkDstn','TranShkDstn')
         if not original_time:
@@ -2473,7 +2470,7 @@ def constructLognormalIncomeProcessUnemployment(parameters):
     IncomeDstn    = [] # Discrete approximations to income process in each period
     PermShkDstn   = [] # Discrete approximations to permanent income shocks
     TranShkDstn   = [] # Discrete approximations to transitory income shocks
-    RriskShkDstn   = [] # Discrete approximations to risky income returns
+    RiskyShkDstn   = [] # Discrete approximations to risky income returns
 
     # Fill out a simple discrete RV for retirement, with value 1.0 (mean of shocks)
     # in normal times; value 0.0 in "unemployment" times with small prob.
@@ -2488,10 +2485,9 @@ def constructLognormalIncomeProcessUnemployment(parameters):
             PermShkDstnRet  = [np.array([1.0]), np.array([1.0])]
             TranShkDstnRet  = [np.array([1.0]), np.array([1.0])]
 
-        RriskShkDstnRet = approxMeanOneLognormal(N=1, sigma=0.1, tail_N=0)  # Risky investments give un
-        RriskShkDstnRet = (deepcopy(RriskShkDstnRet[0]), parameters.Rfree-1.0+deepcopy(RriskShkDstnRet[1])+parameters.RiskPremium)
-#        RriskShkDstnRet[1] = parameters.Rfree-1.0+parameters.RiskPremium+RriskShkDstnRet[1]  # adjust shock distribution
-        IncomeDstnRet = combineIndepDstns(PermShkDstnRet, TranShkDstnRet, RriskShkDstnRet)
+        RiskyShkDstnRet = approxMeanOneLognormal(N=1, sigma=0.1, tail_N=0)  # Risky investments give un
+        RiskyShkDstnRet = (deepcopy(RiskyShkDstnRet[0]), parameters.Rfree-1.0+deepcopy(RiskyShkDstnRet[1])+parameters.RiskPremium)
+        IncomeDstnRet = combineIndepDstns(PermShkDstnRet, TranShkDstnRet, RiskyShkDstnRet)
 
     # Loop to fill in the list of IncomeDstn random variables.
     for t in range(T_cycle): # Iterate over all periods, counting forward
@@ -2502,21 +2498,21 @@ def constructLognormalIncomeProcessUnemployment(parameters):
             IncomeDstn.append(deepcopy(IncomeDstnRet))
             PermShkDstn.append(deepcopy(PermShkDstnRet))
             TranShkDstn.append(deepcopy(TranShkDstnRet))
-            RriskShkDstn.append(deepcopy(RriskShkDstnRet))
+            RiskyShkDstn.append(deepcopy(RiskyShkDstnRet))
         else:
             # We are in the "working life" periods.
             TranShkDstn_t    = approxMeanOneLognormal(N=TranShkCount, sigma=TranShkStd[t], tail_N=0)
             if UnempPrb > 0:
                 TranShkDstn_t = addDiscreteOutcomeConstantMean(TranShkDstn_t, p=UnempPrb, x=IncUnemp)
             PermShkDstn_t  = approxMeanOneLognormal(N=PermShkCount, sigma=PermShkStd[t], tail_N=0)
-            RriskShkDstn_t = approxMeanOneLognormal(N=1, sigma=0.00, tail_N=0) # Risky investments give un
-            # This is sort of weird, but I couldn't get it to work by updating RriskShkDstn_t[1]
-            RriskShkDstn_t = (deepcopy(RriskShkDstn_t[0]), parameters.Rfree-1.0+deepcopy(RriskShkDstn_t[1])+parameters.RiskPremium)
-            IncomeDstn.append(combineIndepDstns(PermShkDstn_t, TranShkDstn_t, RriskShkDstn_t)) # mix the independent distributions
+            RiskyShkDstn_t = approxMeanOneLognormal(N=1, sigma=0.00, tail_N=0) # Risky investments give un
+            # This is sort of weird, but I couldn't get it to work by updating RiskyShkDstn_t[1]
+            RiskyShkDstn_t = (deepcopy(RiskyShkDstn_t[0]), parameters.Rfree-1.0+deepcopy(RiskyShkDstn_t[1])+parameters.RiskPremium)
+            IncomeDstn.append(combineIndepDstns(PermShkDstn_t, TranShkDstn_t, RiskyShkDstn_t)) # mix the independent distributions
             PermShkDstn.append(PermShkDstn_t)
             TranShkDstn.append(TranShkDstn_t)
-            RriskShkDstn.append([deepcopy(RriskShkDstn_t[0]), deepcopy(RriskShkDstn_t[1])])
-    return IncomeDstn, PermShkDstn, TranShkDstn, RriskShkDstn
+            RiskyShkDstn.append([deepcopy(RiskyShkDstn_t[0]), deepcopy(RiskyShkDstn_t[1])])
+    return IncomeDstn, PermShkDstn, TranShkDstn, RiskyShkDstn
 
 
 def applyFlatIncomeTax(IncomeDstn,tax_rate,T_retire,unemployed_indices=[],transitory_index=2):
