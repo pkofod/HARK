@@ -807,7 +807,7 @@ class ConsIndShockSolverBasic(ConsIndShockSetup):
 
         # Get cash on hand next period
         # [!] not valid in portfolio model
-        mNrmNext          = self.Rfree/(self.PermGroFac*PermShkVals_temp)*aNrm_temp + TranShkVals_temp
+        mNrmNext = self.Rfree/(self.PermGroFac*PermShkVals_temp)*aNrm_temp + TranShkVals_temp
 
         # Store and report the results
         self.PermShkVals_temp  = PermShkVals_temp
@@ -1109,9 +1109,11 @@ class ConsIndShockSolver(ConsIndShockSolverBasic):
         mNrm_temp    = np.insert(mNrm_temp,0,self.mNrmMinNow)
         vNvrs        = np.insert(vNvrs,0,0.0)
         vNvrsP       = np.insert(vNvrsP,0,self.MPCmaxEff**(-self.CRRA/(1.0-self.CRRA)))
-    #    MPCminNvrs   = self.MPCminNow**(-self.CRRA/(1.0-self.CRRA))
-#        vNvrsFuncNow = CubicInterp(mNrm_temp,vNvrs,vNvrsP,MPCminNvrs*self.hNrmNow,MPCminNvrs)
-        vNvrsFuncNow = LinearInterp(mNrm_temp,vNvrs)
+        if self.CubicBool:
+            MPCminNvrs   = self.MPCminNow**(-self.CRRA/(1.0-self.CRRA))
+            vNvrsFuncNow = CubicInterp(mNrm_temp,vNvrs,vNvrsP,MPCminNvrs*self.hNrmNow,MPCminNvrs)
+        else:
+            vNvrsFuncNow = LinearInterp(mNrm_temp,vNvrs)
         vFuncNow     = ValueFunc(vNvrsFuncNow,self.CRRA)
         return vFuncNow
 
@@ -1369,11 +1371,9 @@ def solveConsIndShock(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,PermGro
                                                   Rfree,PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,
                                                   CubicBool)
     elif PortfolioBool == False: # Use the "advanced" solver if either is requested
-        print("Using advanced/False")
         solver = ConsIndShockSolver(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,
                                              PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,CubicBool)
     elif PortfolioBool == True:
-        print("Using advanced/True")
         solver = ConsIndShockPortfolioSolver(solution_next,IncomeDstn,LivPrb,DiscFac,CRRA,Rfree,
                                      PermGroFac,BoroCnstArt,aXtraGrid,vFuncBool,CubicBool)
 
