@@ -465,7 +465,7 @@ def approxLognormal(N, mu=0.0, sigma=1.0, tail_N=0, tail_bound=[0.02,0.98], tail
         Discrete values in probability mass function.
 
     Written by Luca Gerotto
-    Based on Matab function "setup_workspace.m," from Chris Carroll's
+    Based on Matlab function "setup_workspace.m," from Chris Carroll's
       [Solution Methods for Microeconomic Dynamic Optimization Problems]
       (http://www.econ2.jhu.edu/people/ccarroll/solvingmicrodsops/) toolkit.
     Latest update: 11 February 2017 by Matthew N. White
@@ -542,7 +542,7 @@ def approxMeanOneLognormal(N, sigma=1.0, **kwargs):
         Probability associated with each point in X.
 
     Written by Nathan M. Palmer
-    Based on Matab function "setup_shocks.m," from Chris Carroll's
+    Based on Matlab function "setup_shocks.m," from Chris Carroll's
       [Solution Methods for Microeconomic Dynamic Optimization Problems]
       (http://www.econ2.jhu.edu/people/ccarroll/solvingmicrodsops/) toolkit.
     Latest update: 01 May 2015
@@ -929,7 +929,7 @@ def makeGridExpMult(ming, maxg, ng, timestonest=20):
     points : np.array
         A multi-exponentially spaced grid
 
-    Original Matab code can be found in Chris Carroll's
+    Original Matlab code can be found in Chris Carroll's
     [Solution Methods for Microeconomic Dynamic Optimization Problems]
     (http://www.econ2.jhu.edu/people/ccarroll/solvingmicrodsops/) toolkit.
     Latest update: 01 May 2015
