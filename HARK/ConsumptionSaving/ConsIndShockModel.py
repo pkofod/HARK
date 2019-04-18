@@ -1279,8 +1279,7 @@ class ConsIndShockPortfolioSolver(ConsIndShockSolver):
         '''
         VLvlNext            = self.vOptFuncNext(self.aNrmNow)
         EndOfPrdv           = VLvlNext
-        print(EndOfPrdv)
-
+         
         EndOfPrdvNvrs       = self.uinv(EndOfPrdv) # value transformed through inverse utility
         EndOfPrdvNvrs       = np.insert(EndOfPrdvNvrs,0,0.0)
         aNrm_temp           = np.insert(self.aNrmNow,0,self.BoroCnstNat)
